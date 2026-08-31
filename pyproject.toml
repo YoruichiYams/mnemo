@@ -1,0 +1,116 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mnemo"
+version = "0.1.0"
+description = "Cross-platform local MCP server and CLI for bitemporal long-term memory for AI agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Mnemo Contributors" }
+]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "memory",
+    "bitemporal",
+    "ai-agents",
+    "llm",
+    "vector-search",
+    "sqlite",
+    "fts5",
+    "knowledge-graph"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "pydantic>=2.0.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "numpy>=1.24.0",
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+embeddings = [
+    "fastembed>=0.2.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[project.scripts]
+mnemo = "mnemo.cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mnemo"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501", # line length handled by formatter
+    "B008", # do not perform function calls in argument defaults (needed for Typer)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mnemo"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = [
+    "fastembed.*",
+    "mcp.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "mnemo.mcp.*",
+]
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]
