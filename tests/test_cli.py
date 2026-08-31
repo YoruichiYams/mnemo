@@ -181,3 +181,28 @@ class TestCLICommands:
         )
         assert res.exit_code == 0
         assert "sankey-beta" in res.stdout
+
+    def test_cli_doctor(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """'mnemo doctor' checks integrity and displays diagnostics."""
+        db_path = tmp_path / "doctor.db"
+        cli_runner.invoke(app, ["init", "--db", str(db_path)])
+
+        res = cli_runner.invoke(app, ["doctor", "--db", str(db_path)])
+        assert res.exit_code == 0
+        assert "mnemo doctor" in res.stdout
+        assert "sqlite integrity" in res.stdout
+        assert "schema version" in res.stdout
+
+    def test_cli_scan(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+        """'mnemo scan' executes AST scan and outputs summary metrics."""
+        db_path = tmp_path / "scan.db"
+        cli_runner.invoke(app, ["init", "--db", str(db_path)])
+
+        code_dir = tmp_path / "src"
+        code_dir.mkdir()
+        (code_dir / "app.py").write_text("class ServerApp:\n    pass\n", encoding="utf-8")
+
+        res = cli_runner.invoke(app, ["scan", str(tmp_path), "--db", str(db_path)])
+        assert res.exit_code == 0
+        assert "mnemo scan" in res.stdout
+        assert "scanned files" in res.stdout

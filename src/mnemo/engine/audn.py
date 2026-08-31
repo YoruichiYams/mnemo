@@ -129,6 +129,11 @@ class AUDNClassifier:
             ),
         )
         fact.embedding = embedding.tolist()
+
+        # Autonomous zero-touch: automatically link fact to mentioned AST entities
+        from mnemo.engine.scanner import link_fact_to_entities
+
+        link_fact_to_entities(fact.id, fact.text, conn, now=now)
         return fact
 
     def execute_update(

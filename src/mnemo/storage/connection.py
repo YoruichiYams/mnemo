@@ -17,7 +17,7 @@ import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -92,18 +92,20 @@ def _load_schema_sql() -> str:
 
 
 def init_db(db_path: str | Path | None = None) -> None:
-    """Create all tables, FTS virtual tables, triggers, and indexes.
+    """Create all tables, FTS virtual tables, triggers, and indexes via migrations.
 
-    Safe to call multiple times — every DDL statement uses
-    ``CREATE … IF NOT EXISTS``.
+    Safe to call multiple times — every migration is idempotent and tracked
+    via ``PRAGMA user_version``.
 
     Args:
         db_path: Target database path.  ``None`` → default path.
     """
+    from mnemo.storage.migrations import apply_migrations
+
     target = str(db_path) if db_path is not None else str(default_db_path())
     conn = create_connection(target)
     try:
-        conn.executescript(_load_schema_sql())
+        apply_migrations(conn)
         conn.commit()
     finally:
         conn.close()
@@ -123,6 +125,8 @@ class Database:
     """
 
     def __init__(self, db_path: str | Path | None = None) -> None:
+        from mnemo.storage.migrations import apply_migrations
+
         resolved = str(db_path) if db_path is not None else str(default_db_path())
         self.db_path: str = resolved
         self._is_memory: bool = resolved == ":memory:"
@@ -133,7 +137,7 @@ class Database:
 
         if self._is_memory:
             self._persistent_conn = create_connection(":memory:")
-            self._persistent_conn.executescript(_load_schema_sql())
+            apply_migrations(self._persistent_conn)
             self._persistent_conn.commit()
         else:
             init_db(resolved)
@@ -174,6 +178,13 @@ class Database:
                 raise
             finally:
                 conn.close()
+
+    def check_integrity(self) -> dict[str, Any]:
+        """Run self-diagnostic checks on database health and schema integrity."""
+        from mnemo.storage.migrations import check_database_integrity
+
+        with self.session() as conn:
+            return check_database_integrity(conn)
 
     def close(self) -> None:
         """Release the persistent connection (if any)."""

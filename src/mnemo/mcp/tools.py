@@ -214,3 +214,29 @@ def mnemo_get_debt_ledger() -> str:
 
     lines = [encode_debt(item.model_dump()) for item in items]
     return "\n".join(lines)
+
+
+# -----------------------------------------------------------------------
+# mnemo_scan_project
+# -----------------------------------------------------------------------
+@mcp_app.tool(
+    name="mnemo_scan_project",
+    description=(
+        "Perform an incremental AST code scan of the current repository to "
+        "extract modules, classes, and dependencies into the knowledge graph."
+    ),
+)
+def mnemo_scan_project(path: str = ".") -> str:
+    """Perform AST scan of project path and populate graph entities."""
+    from mnemo.engine.scanner import ProjectScanner
+
+    db = _get_db()
+    scanner = ProjectScanner(root_path=path)
+
+    with db.session() as conn:
+        res = scanner.scan(conn)
+
+    return (
+        f"[SCAN] scanned={res['scanned_files']} skipped={res['skipped_files']} "
+        f"entities=+{res['entities_added']} relations=+{res['relations_added']}"
+    )

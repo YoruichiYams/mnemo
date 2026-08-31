@@ -438,6 +438,72 @@ def visualize(
 
 
 # ---------------------------------------------------------------------------
+# doctor
+# ---------------------------------------------------------------------------
+@app.command()
+def doctor(
+    db_path: str = typer.Option("", "--db", help="Database path."),
+) -> None:
+    """Diagnose database health, FTS5 index integrity, and graph statistics."""
+    from mnemo.storage.connection import Database, default_db_path
+
+    target = db_path if db_path else str(default_db_path())
+    db = Database(db_path=target)
+    health = db.check_integrity()
+
+    status_color = "green" if health["integrity_ok"] else "red"
+    fts_color = "green" if health["fts_in_sync"] else "yellow"
+
+    console.print("→ [bold]mnemo doctor[/bold]")
+    console.print(f"  [dim]database[/dim]        {_safe_str(target)}")
+    console.print(
+        f"  [dim]schema version[/dim]  v{health['schema_version']} (target v{health['target_version']})"
+    )
+    console.print(
+        f"  [dim]sqlite integrity[/dim][{status_color}] {'ok' if health['integrity_ok'] else 'corrupted'}[/{status_color}]"
+    )
+    console.print(f"  [dim]journal mode[/dim]    {health['journal_mode']}")
+    console.print(
+        f"  [dim]fts5 sync[/dim]       [{fts_color}] {'synchronized' if health['fts_in_sync'] else 'repaired'}[/{fts_color}]"
+    )
+
+    counts = health.get("table_counts", {})
+    console.print(f"  [dim]active facts[/dim]    {counts.get('facts', 0)}")
+    console.print(f"  [dim]entities[/dim]        {counts.get('entities', 0)}")
+    console.print(f"  [dim]relations[/dim]       {counts.get('relations', 0)}")
+    console.print(f"  [dim]cached files[/dim]    {counts.get('file_scan_cache', 0)}")
+    db.close()
+
+
+# ---------------------------------------------------------------------------
+# scan
+# ---------------------------------------------------------------------------
+@app.command()
+def scan(
+    path: str = typer.Argument(".", help="Project directory path to scan."),
+    db_path: str = typer.Option("", "--db", help="Database path."),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-scan all files."),
+) -> None:
+    """Perform an incremental AST scan to extract modules, classes, and dependencies."""
+    from mnemo.engine.scanner import ProjectScanner
+    from mnemo.storage.connection import Database, default_db_path
+
+    target = db_path if db_path else str(default_db_path())
+    db = Database(db_path=target)
+    scanner = ProjectScanner(root_path=path)
+
+    with db.session() as conn:
+        res = scanner.scan(conn, force=force)
+
+    console.print("→ [bold]mnemo scan[/bold]")
+    console.print(f"  [dim]scanned files[/dim]    {res['scanned_files']}")
+    console.print(f"  [dim]skipped files[/dim]    {res['skipped_files']}")
+    console.print(f"  [dim]entities added[/dim]   {res['entities_added']}")
+    console.print(f"  [dim]relations added[/dim]  {res['relations_added']}")
+    db.close()
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

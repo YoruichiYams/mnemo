@@ -136,6 +136,33 @@ def export_knowledge_sankey_data(
         targets.append(get_or_add_node(tgt))
         values.append(round(val, 4))
 
+    # Compute strict 3-column coordinates: Col 0 (x=0.01), Col 1 (x=0.50), Col 2 (x=0.99)
+    col_0_indices = [i for i, n in enumerate(all_nodes) if n.startswith("cat:")]
+    col_1_indices = [
+        i for i, n in enumerate(all_nodes) if n in {"Core", "Working", "Peripheral", "Archived"}
+    ]
+    col_2_indices = [
+        i for i, n in enumerate(all_nodes) if i not in col_0_indices and i not in col_1_indices
+    ]
+
+    node_x: list[float] = [0.5] * len(all_nodes)
+    node_y: list[float] = [0.5] * len(all_nodes)
+
+    def _assign_column(indices: list[int], x_val: float) -> None:
+        n = len(indices)
+        if n == 0:
+            return
+        for k, idx in enumerate(indices):
+            node_x[idx] = x_val
+            if n == 1:
+                node_y[idx] = 0.5
+            else:
+                node_y[idx] = round(0.08 + 0.84 * (k / (n - 1)), 4)
+
+    _assign_column(col_0_indices, 0.01)
+    _assign_column(col_1_indices, 0.50)
+    _assign_column(col_2_indices, 0.99)
+
     # Node palette (Dark Minimal)
     node_colors: list[str] = []
     for node in all_nodes:
@@ -161,6 +188,8 @@ def export_knowledge_sankey_data(
     return {
         "nodes": all_nodes,
         "node_colors": node_colors,
+        "node_x": node_x,
+        "node_y": node_y,
         "sources": sources,
         "targets": targets,
         "values": values,
@@ -217,6 +246,8 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
 
     nodes_json = json.dumps(data["nodes"])
     node_colors_json = json.dumps(data["node_colors"])
+    node_x_json = json.dumps(data.get("node_x", []))
+    node_y_json = json.dumps(data.get("node_y", []))
     sources_json = json.dumps(data["sources"])
     targets_json = json.dumps(data["targets"])
     values_json = json.dumps(data["values"])
@@ -384,6 +415,8 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
     <script>
         const nodes = {nodes_json};
         const nodeColors = {node_colors_json};
+        const nodeX = {node_x_json};
+        const nodeY = {node_y_json};
         const sources = {sources_json};
         const targets = {targets_json};
         const values = {values_json};
@@ -398,12 +431,15 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
         const plotData = [{{
             type: "sankey",
             orientation: "h",
+            arrangement: "fixed",
             node: {{
                 pad: 20,
                 thickness: 18,
                 line: {{ color: "#1a1c22", width: 1 }},
                 label: cleanLabels,
                 color: nodeColors,
+                x: nodeX.length === nodes.length ? nodeX : undefined,
+                y: nodeY.length === nodes.length ? nodeY : undefined,
                 hoverlabel: {{
                     bgcolor: "#0b0c0e",
                     bordercolor: "#1a1c22",
