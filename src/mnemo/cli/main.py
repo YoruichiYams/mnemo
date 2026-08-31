@@ -1,4 +1,4 @@
-"""Mnemo CLI — Typer + Rich interface.
+"""Mnemo CLI — Borderless Matrix interface.
 
 Commands:
     init          Initialise the memory database.
@@ -9,14 +9,28 @@ Commands:
     debt          Detect and display knowledge debt.
     serve         Start the MCP stdio server.
     stats         Show memory statistics.
+    visualize     Generate interactive knowledge Sankey diagram.
 """
 
 from __future__ import annotations
 
+import sys
+from typing import Any
+
 import typer
+from rich import box
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
+
+# Ensure UTF-8 output encoding across Windows legacy consoles
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except Exception:
+        pass
 
 app = typer.Typer(
     name="mnemo",
@@ -24,7 +38,12 @@ app = typer.Typer(
     rich_markup_mode="rich",
     no_args_is_help=True,
 )
-console = Console()
+console = Console(highlight=False)
+
+
+def _safe_str(val: Any) -> str:
+    """Format string safely for display."""
+    return str(val)
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +62,8 @@ def init(
 
     target = db_path if db_path else str(default_db_path())
     Database(db_path=target)
-    console.print(Panel(f"[green]Database initialised:[/green] {target}", title="mnemo init"))
+    console.print("→ [bold]mnemo init[/bold]")
+    console.print(f"  [dim]database[/dim]  {_safe_str(target)}")
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +84,7 @@ def remember(
 
     target = db_path if db_path else str(default_db_path())
     db = Database(db_path=target)
-    vs = VectorStore(create_embedder())  # type: ignore[arg-type]
+    vs = VectorStore(create_embedder())
     audn = AUDNClassifier(vs)
 
     with db.session() as conn:
@@ -72,31 +92,23 @@ def remember(
 
         if op == AUDNOperation.ADD:
             fact = audn.execute_add(text, category, conn)
+            console.print("→ [bold]mnemo remember[/bold] [green]add[/green]")
             console.print(
-                Panel(
-                    f"[green]ADD[/green] {encode_fact(fact.model_dump(exclude={'embedding'}))}",
-                    title="mnemo remember",
-                )
+                f"  [dim]fact[/dim]  {encode_fact(fact.model_dump(exclude={'embedding'}))}"
             )
         elif op == AUDNOperation.UPDATE and existing_id:
             fact = audn.execute_update(existing_id, text, category, conn)
+            console.print("→ [bold]mnemo remember[/bold] [yellow]update[/yellow]")
+            console.print(f"  [dim]old[/dim]   {existing_id[:8]}..")
             console.print(
-                Panel(
-                    f"[yellow]UPDATE[/yellow] old={existing_id[:8]}.. "
-                    f"{encode_fact(fact.model_dump(exclude={'embedding'}))}",
-                    title="mnemo remember",
-                )
+                f"  [dim]new[/dim]   {encode_fact(fact.model_dump(exclude={'embedding'}))}"
             )
         elif op == AUDNOperation.NOOP and existing_id:
             audn.execute_noop(existing_id, conn)
-            console.print(
-                Panel(
-                    f"[dim]NOOP[/dim] reinforced existing fact {existing_id[:8]}..",
-                    title="mnemo remember",
-                )
-            )
+            console.print("→ [bold]mnemo remember[/bold] [dim]noop[/dim]")
+            console.print(f"  [dim]reinforced[/dim]  {existing_id[:8]}..")
         else:
-            console.print(f"[dim]{op.value}[/dim]")
+            console.print(f"→ [bold]mnemo remember[/bold] [dim]{op.value}[/dim]")
 
     db.close()
 
@@ -123,7 +135,7 @@ def search(
 
     target = db_path if db_path else str(default_db_path())
     db = Database(db_path=target)
-    vs = VectorStore(create_embedder())  # type: ignore[arg-type]
+    vs = VectorStore(create_embedder())
     retriever = HybridRetriever(vs, FTSStore(), GraphStore())
     tier = MemoryTier(min_tier.lower())
 
@@ -135,19 +147,26 @@ def search(
         db.close()
         return
 
-    table = Table(title="Search Results", show_lines=True)
+    table = Table(
+        title="→ [bold]Search Results[/bold]",
+        title_justify="left",
+        box=box.SIMPLE_HEAD,
+        show_header=True,
+        header_style="bold dim",
+        padding=(0, 1),
+    )
     table.add_column("#", style="dim", width=4)
     table.add_column("Score", justify="right", width=10)
-    table.add_column("Tier", width=8)
+    table.add_column("Tier", width=10)
     table.add_column("Category", width=12)
     table.add_column("Text", ratio=1)
     table.add_column("ID", style="dim", width=10)
 
     for i, r in enumerate(results, 1):
         tier_style = {
-            "core": "bold red",
+            "core": "bold green",
             "working": "bold yellow",
-            "peripheral": "cyan",
+            "peripheral": "dim cyan",
             "archived": "dim",
         }.get(r.fact.tier.value, "")
         table.add_row(
@@ -159,7 +178,9 @@ def search(
             r.fact.id[:8] + "..",
         )
 
+    console.print()
     console.print(table)
+    console.print()
     db.close()
 
 
@@ -178,13 +199,14 @@ def invalidate(
 
     target = db_path if db_path else str(default_db_path())
     db = Database(db_path=target)
-    vs = VectorStore(create_embedder())  # type: ignore[arg-type]
+    vs = VectorStore(create_embedder())
     audn = AUDNClassifier(vs)
 
     with db.session() as conn:
         audn.execute_delete(fact_id, conn)
 
-    console.print(f"[red]Invalidated[/red] fact {fact_id[:8]}..")
+    console.print("→ [bold]mnemo invalidate[/bold]")
+    console.print(f"  [dim]invalidated[/dim]  [red]{fact_id[:8]}..[/red]")
     db.close()
 
 
@@ -206,13 +228,9 @@ def tier_decay(
     with db.session() as conn:
         result = mgr.decay_all(conn)
 
-    console.print(
-        Panel(
-            f"Processed: [green]{result['processed']}[/green] facts  "
-            f"Migrated: [yellow]{result['migrated']}[/yellow]",
-            title="Tier Decay",
-        )
-    )
+    console.print("→ [bold]mnemo tier-decay[/bold]")
+    console.print(f"  [dim]processed[/dim]  [green]{result['processed']}[/green]")
+    console.print(f"  [dim]migrated[/dim]   [yellow]{result['migrated']}[/yellow]")
     db.close()
 
 
@@ -238,11 +256,19 @@ def debt(
             mgr.persist_debt(items, conn)
 
     if not items:
-        console.print("[green]No debt detected.[/green]")
+        console.print("→ [bold]mnemo debt[/bold]")
+        console.print("  [green]No debt detected.[/green]")
         db.close()
         return
 
-    table = Table(title="Debt Ledger", show_lines=True)
+    table = Table(
+        title="→ [bold]Debt Ledger[/bold]",
+        title_justify="left",
+        box=box.SIMPLE_HEAD,
+        show_header=True,
+        header_style="bold dim",
+        padding=(0, 1),
+    )
     table.add_column("Ceiling", width=10)
     table.add_column("Trigger", width=20)
     table.add_column("Context", ratio=1)
@@ -260,7 +286,9 @@ def debt(
             item.code_context,
         )
 
+    console.print()
     console.print(table)
+    console.print()
     db.close()
 
 
@@ -270,12 +298,9 @@ def debt(
 @app.command()
 def serve() -> None:
     """Start the Mnemo MCP server (stdio transport)."""
-    console.print(
-        Panel(
-            "[bold]Starting Mnemo MCP server...[/bold]\nTransport: stdio\nPress Ctrl+C to stop.",
-            title="mnemo serve",
-        )
-    )
+    console.print("→ [bold]mnemo serve[/bold]")
+    console.print("  [dim]transport[/dim]  stdio")
+    console.print("  [dim]status[/dim]     running (press Ctrl+C to stop)")
     from mnemo.mcp.server import run_server
 
     run_server()
@@ -322,21 +347,94 @@ def stats(
         ).fetchone()
         debt_count = conn.execute("SELECT COUNT(*) AS c FROM debt_ledger").fetchone()
 
-    table = Table(title="Mnemo Memory Stats", show_lines=True)
+    table = Table(
+        title="→ [bold]Mnemo Memory Stats[/bold]",
+        title_justify="left",
+        box=box.SIMPLE_HEAD,
+        show_header=True,
+        header_style="bold dim",
+        padding=(0, 1),
+    )
     table.add_column("Metric", style="bold", ratio=1)
-    table.add_column("Value", justify="right", width=12)
+    table.add_column("Value", justify="right", width=14)
 
     table.add_row("Total facts (all versions)", str(total["c"]))
     table.add_row("Active facts", str(active["c"]))
     for t in tiers:
-        table.add_row(f"  Tier: {t['tier']}", str(t["c"]))
+        table.add_row(f"  · Tier: {t['tier']}", str(t["c"]))
     table.add_row("Active entities", str(entities_count["c"]))
     table.add_row("Active relations", str(relations_count["c"]))
     table.add_row("Debt ledger items", str(debt_count["c"]))
-    table.add_row("Database", target)
+    table.add_row("Database", _safe_str(target))
 
+    console.print()
     console.print(table)
+    console.print()
     db.close()
+
+
+# ---------------------------------------------------------------------------
+# visualize
+# ---------------------------------------------------------------------------
+@app.command()
+def visualize(
+    output: str = typer.Option(
+        "./mnemo_graph.html",
+        "-o",
+        "--output",
+        help="Path to output HTML file.",
+    ),
+    open_browser: bool = typer.Option(
+        True,
+        "--open/--no-open",
+        help="Automatically open generated HTML visualization in default browser.",
+    ),
+    format_type: str = typer.Option(
+        "html",
+        "--format",
+        "-f",
+        help="Visualization format: 'html' (interactive Sankey) or 'mermaid' (terminal output).",
+    ),
+    db_path: str = typer.Option("", "--db", help="Database path."),
+) -> None:
+    """Generate an interactive Dark Minimal Sankey flow diagram of the memory graph."""
+    import webbrowser
+    from pathlib import Path
+
+    from mnemo.cli.visualize import (
+        export_knowledge_sankey_data,
+        generate_html_report,
+        generate_mermaid_sankey,
+    )
+    from mnemo.storage.connection import Database, default_db_path
+
+    target_db = db_path if db_path else str(default_db_path())
+    db = Database(db_path=target_db)
+
+    with db.session() as conn:
+        data = export_knowledge_sankey_data(conn)
+
+    db.close()
+
+    if format_type.lower() == "mermaid":
+        mermaid_code = generate_mermaid_sankey(data)
+        console.print(mermaid_code)
+        return
+
+    html_content = generate_html_report(data)
+    out_path = Path(output).resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html_content, encoding="utf-8")
+
+    console.print("→ [bold]mnemo visualize[/bold]")
+    console.print(f"  [dim]nodes[/dim]         {len(data['nodes'])}")
+    console.print(f"  [dim]active flows[/dim]  {len(data['values'])}")
+    console.print(f"  [dim]core memory[/dim]   {data['metrics']['core_pct']}%")
+    console.print()
+    console.print(f'the result is available by path "{_safe_str(out_path)}"')
+
+    if open_browser:
+        webbrowser.open(out_path.as_uri())
 
 
 # ---------------------------------------------------------------------------
