@@ -19,32 +19,48 @@ class TestTierManager:
         with in_memory_db.session() as conn:
             # 1. Fact accessed 10 days ago (240 hours)
             conn.execute(
-                "INSERT INTO facts (id, text, category, salience, access_count, tier, last_accessed_at, valid_start, ingest_start) "
-                "VALUES ('f_old', 'Old fact from 10 days ago', 'test', 0.80, 0, 'working', ?, ?, ?)",
+                "INSERT INTO facts (id, text, category, salience, access_count, tier, last_accessed_at, valid_start, ingest_start, metadata_json) "
+                "VALUES ('f_old', 'Old fact from 10 days ago', 'test', 0.80, 0, 'working', ?, ?, ?, '{}')",
                 (now - 10 * 86400.0, now - 10 * 86400.0, now - 10 * 86400.0),
             )
-            # 2. Core fact (should NOT decay)
+            # 2. Pinned Core fact (should NOT decay)
             conn.execute(
-                "INSERT INTO facts (id, text, category, salience, access_count, tier, last_accessed_at, valid_start, ingest_start) "
-                "VALUES ('f_core', 'Permanent rule', 'test', 1.0, 0, 'core', ?, ?, ?)",
+                "INSERT INTO facts (id, text, category, salience, access_count, tier, last_accessed_at, valid_start, ingest_start, metadata_json) "
+                "VALUES ('f_core', 'Permanent rule', 'test', 1.0, 0, 'core', ?, ?, ?, '{\"pinned\": true}')",
+                (now - 10 * 86400.0, now - 10 * 86400.0, now - 10 * 86400.0),
+            )
+            # 3. Unpinned Core fact (should decay over time)
+            conn.execute(
+                "INSERT INTO facts (id, text, category, salience, access_count, tier, last_accessed_at, valid_start, ingest_start, metadata_json) "
+                "VALUES ('f_unpinned_core', 'Unpinned core fact', 'test', 1.0, 0, 'core', ?, ?, ?, '{}')",
                 (now - 10 * 86400.0, now - 10 * 86400.0, now - 10 * 86400.0),
             )
 
             result = tier_manager.decay_all(conn, now=now)
-            assert result["processed"] >= 1
-            assert result["migrated"] >= 1
+            assert result["processed"] >= 2
+            assert result["migrated"] >= 2
 
             # Check old fact was demoted
-            row_old = conn.execute("SELECT salience, tier FROM facts WHERE id = 'f_old'").fetchone()
+            row_old = conn.execute(
+                "SELECT salience, tier, last_accessed_at FROM facts WHERE id = 'f_old'"
+            ).fetchone()
             assert row_old["tier"] in ("peripheral", "archived")
             assert row_old["salience"] < 0.80
+            assert row_old["last_accessed_at"] == now
 
-            # Check core fact remained Core
+            # Check pinned core fact remained Core
             row_core = conn.execute(
                 "SELECT salience, tier FROM facts WHERE id = 'f_core'"
             ).fetchone()
             assert row_core["tier"] == "core"
             assert row_core["salience"] == 1.0
+
+            # Check unpinned core fact decayed
+            row_unpinned = conn.execute(
+                "SELECT salience, tier FROM facts WHERE id = 'f_unpinned_core'"
+            ).fetchone()
+            assert row_unpinned["tier"] in ("peripheral", "archived")
+            assert row_unpinned["salience"] < 0.90
 
     def test_detect_and_persist_debt(
         self, in_memory_db: Database, tier_manager: TierManager

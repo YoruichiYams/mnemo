@@ -298,9 +298,10 @@ def debt(
 @app.command()
 def serve() -> None:
     """Start the Mnemo MCP server (stdio transport)."""
-    console.print("→ [bold]mnemo serve[/bold]")
-    console.print("  [dim]transport[/dim]  stdio")
-    console.print("  [dim]status[/dim]     running (press Ctrl+C to stop)")
+    err_console = Console(stderr=True, highlight=False)
+    err_console.print("→ [bold]mnemo serve[/bold]")
+    err_console.print("  [dim]transport[/dim]  stdio")
+    err_console.print("  [dim]status[/dim]     running (press Ctrl+C to stop)")
     from mnemo.mcp.server import run_server
 
     run_server()

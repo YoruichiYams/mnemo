@@ -43,6 +43,22 @@ class TestMCPToolsAndResources:
         search_fmt = mnemo_search("query test")
         assert isinstance(search_fmt, str)
 
+        # 5. Invalid force_op
+        err_op = mnemo_remember("Some text", force_op="invalid_op")
+        assert "[ERROR]" in err_op
+        assert "invalid force_op" in err_op
+
+        # 6. Invalid min_tier
+        err_tier = mnemo_search("Some query", min_tier="invalid_tier")
+        assert "[ERROR]" in err_tier
+        assert "invalid min_tier" in err_tier
+
+        # 7. Force update with non-existent text -> fallback to add
+        fresh_token = f"fresh_{uuid.uuid4().hex[:8]}"
+        fallback_res = mnemo_remember(f"Brand new fact {fresh_token}", force_op="update")
+        assert "[ADD]" in fallback_res
+        assert "fallback" in fallback_res
+
     def test_mcp_invalidate_and_reinforce_tools(self) -> None:
         """'mnemo_invalidate' and 'mnemo_reinforce' execute cleanly."""
         unique_token = f"inval_{uuid.uuid4().hex[:8]}"

@@ -41,18 +41,30 @@ def mnemo_remember(
     db = _get_db()
     audn = _get_audn()
 
-    forced = AUDNOperation(force_op) if force_op else None
+    if force_op:
+        try:
+            forced = AUDNOperation(force_op.lower())
+        except ValueError:
+            valid_ops = ", ".join(op.value for op in AUDNOperation)
+            return f"[ERROR] invalid force_op '{force_op}'. Expected one of: {valid_ops}"
+    else:
+        forced = None
 
     with db.session() as conn:
         op, existing_id = audn.classify(text, category, conn, force_op=forced)
 
+        if op == AUDNOperation.UPDATE:
+            if existing_id:
+                fact = audn.execute_update(existing_id, text, category, conn)
+                return f"[UPD] old={existing_id[:8]}.. {encode_fact(fact.model_dump(exclude={'embedding'}))}"
+            else:
+                # Fallback to ADD if no existing fact was found to update
+                fact = audn.execute_add(text, category, conn)
+                return f"[ADD] (fallback) {encode_fact(fact.model_dump(exclude={'embedding'}))}"
+
         if op == AUDNOperation.ADD:
             fact = audn.execute_add(text, category, conn)
             return f"[ADD] {encode_fact(fact.model_dump(exclude={'embedding'}))}"
-
-        if op == AUDNOperation.UPDATE and existing_id:
-            fact = audn.execute_update(existing_id, text, category, conn)
-            return f"[UPD] old={existing_id[:8]}.. {encode_fact(fact.model_dump(exclude={'embedding'}))}"
 
         if op == AUDNOperation.NOOP and existing_id:
             audn.execute_noop(existing_id, conn)
@@ -85,7 +97,12 @@ def mnemo_search(
     """
     db = _get_db()
     retriever = _get_retriever()
-    tier = MemoryTier(min_tier.lower())
+
+    try:
+        tier = MemoryTier(min_tier.lower())
+    except ValueError:
+        valid_tiers = ", ".join(t.value for t in MemoryTier)
+        return f"[ERROR] invalid min_tier '{min_tier}'. Expected one of: {valid_tiers}"
 
     with db.session() as conn:
         results = retriever.search(query, conn, limit=limit, min_tier=tier)

@@ -145,10 +145,13 @@ class ProjectScanner:
         }
 
         # 2. Walk directory
+        seen_rel_paths: set[str] = set()
         for dirpath, dirnames, filenames in os.walk(scan_root):
-            # Prune excluded directories in-place
+            # Prune excluded directories in-place (case-insensitive)
             dirnames[:] = [
-                d for d in dirnames if d not in DEFAULT_EXCLUDED_DIRS and not d.startswith(".")
+                d
+                for d in dirnames
+                if d.lower() not in DEFAULT_EXCLUDED_DIRS and not d.startswith(".")
             ]
 
             for fname in filenames:
@@ -158,6 +161,7 @@ class ProjectScanner:
 
                 full_path = Path(dirpath) / fname
                 rel_path = str(full_path.relative_to(scan_root)).replace("\\", "/")
+                seen_rel_paths.add(rel_path)
 
                 try:
                     stat = full_path.stat()
@@ -219,6 +223,25 @@ class ProjectScanner:
                 )
                 scanned_count += 1
 
+        # 3. Deleted files reconciliation
+        deleted_paths = set(scan_cache.keys()) - seen_rel_paths
+        for del_path in deleted_paths:
+            del_parts = list(Path(del_path).with_suffix("").parts)
+            if del_parts and del_parts[0] in {"src", "lib", "app"}:
+                del_parts = del_parts[1:]
+            del_module = ".".join(del_parts) if del_parts else del_path
+
+            # Soft delete entities for deleted files
+            conn.execute(
+                """
+                UPDATE entities SET valid_end = ?
+                WHERE (name = ? OR name LIKE ?) AND ingest_end IS NULL AND (valid_end IS NULL OR valid_end > ?);
+                """,
+                (now, del_module, f"{del_module}.%", now),
+            )
+            # Remove from cache
+            conn.execute("DELETE FROM file_scan_cache WHERE file_path = ?;", (del_path,))
+
         return {
             "scanned_files": scanned_count,
             "skipped_files": skipped_count,
@@ -268,9 +291,29 @@ class ProjectScanner:
                         entities.append((alias.name, ent_type))
                         relations.append((module_name, alias.name, "IMPORTS"))
 
-                # 3. ImportFrom (from foo import bar)
+                # 3. ImportFrom (from foo import bar, from . import bar, from ..pkg import bar)
                 elif isinstance(node, ast.ImportFrom):
-                    if node.module:
+                    if node.level and node.level > 0:
+                        # Relative import
+                        lvl = node.level
+                        base_parts = parts[:-lvl] if len(parts) >= lvl else []
+                        if node.module:
+                            rel_target = (
+                                ".".join(base_parts + [node.module]) if base_parts else node.module
+                            )
+                        else:
+                            rel_target = ".".join(base_parts) if base_parts else module_name
+
+                        entities.append((rel_target, "module"))
+                        relations.append((module_name, rel_target, "DEPENDS_ON"))
+                        if not node.module:
+                            for alias in node.names:
+                                sub_name = (
+                                    f"{rel_target}.{alias.name}" if rel_target else alias.name
+                                )
+                                entities.append((sub_name, "module"))
+                                relations.append((module_name, sub_name, "IMPORTS"))
+                    elif node.module:
                         top_pkg = node.module.split(".")[0]
                         ent_type = (
                             "module"

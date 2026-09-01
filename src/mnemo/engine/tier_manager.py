@@ -15,7 +15,7 @@ import sqlite3
 import time
 
 from mnemo.core.decay import calculate_salience, salience_to_tier
-from mnemo.core.models import DebtLedgerItem, MemoryTier
+from mnemo.core.models import DebtLedgerItem
 
 
 class TierManager:
@@ -37,9 +37,6 @@ class TierManager:
     ) -> dict[str, int]:
         """Recompute salience for every active fact and update tiers.
 
-        Core-tier facts are **not** decayed unless they are explicitly
-        demoted first (they represent permanent architectural rules).
-
         Args:
             conn: Active SQLite connection.
             now: Reference timestamp (epoch seconds). Defaults to ``time.time()``.
@@ -47,10 +44,12 @@ class TierManager:
         Returns:
             ``{"processed": N, "migrated": M}`` counts.
         """
+        import json
+
         current = now if now is not None else time.time()
 
         rows = conn.execute(
-            "SELECT id, salience, access_count, last_accessed_at, tier "
+            "SELECT id, salience, access_count, last_accessed_at, tier, metadata_json "
             "FROM facts "
             "WHERE ingest_end IS NULL AND (valid_end IS NULL OR valid_end > ?)",
             (current,),
@@ -61,10 +60,20 @@ class TierManager:
 
         for row in rows:
             old_tier = str(row["tier"])
-            if old_tier == MemoryTier.CORE.value:
-                continue  # core facts don't decay
+            metadata = {}
+            if "metadata_json" in row.keys() and row["metadata_json"]:
+                try:
+                    metadata = json.loads(row["metadata_json"])
+                except Exception:
+                    pass
 
-            elapsed = max(0.0, current - float(row["last_accessed_at"]))
+            if metadata.get("pinned") or metadata.get("permanent"):
+                continue  # explicitly pinned/permanent facts don't decay
+
+            last_accessed = (
+                float(row["last_accessed_at"]) if row["last_accessed_at"] is not None else current
+            )
+            elapsed = max(0.0, current - last_accessed)
             new_salience = calculate_salience(
                 s0=float(row["salience"]),
                 elapsed_seconds=elapsed,
@@ -75,8 +84,8 @@ class TierManager:
             new_tier = salience_to_tier(new_salience).value
 
             conn.execute(
-                "UPDATE facts SET salience = ?, tier = ? WHERE id = ?",
-                (new_salience, new_tier, str(row["id"])),
+                "UPDATE facts SET salience = ?, tier = ?, last_accessed_at = ? WHERE id = ?",
+                (new_salience, new_tier, current, str(row["id"])),
             )
             processed += 1
             if new_tier != old_tier:

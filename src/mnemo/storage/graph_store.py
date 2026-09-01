@@ -44,11 +44,11 @@ class GraphStore:
             WITH RECURSIVE hop(eid, depth, rel_type, weight, path) AS (
                 -- Base case: seed entity
                 SELECT
-                    ?,         -- eid
-                    0,         -- depth
-                    '',        -- rel_type (none for seed)
-                    1.0,       -- weight
-                    ?          -- path (just seed id)
+                    ?,                    -- eid
+                    0,                    -- depth
+                    '',                   -- rel_type (none for seed)
+                    1.0,                  -- weight
+                    '>' || ? || '>'       -- path with bounding delimiters
 
                 UNION ALL
 
@@ -58,7 +58,7 @@ class GraphStore:
                     hop.depth + 1,
                     r.relation_type,
                     r.weight,
-                    hop.path || '>' || r.target_id
+                    hop.path || r.target_id || '>'
                 FROM hop
                 JOIN relations r ON r.source_id = hop.eid
                 WHERE hop.depth < ?
@@ -66,8 +66,8 @@ class GraphStore:
                   AND r.valid_start  <= ?
                   AND (r.valid_end   IS NULL OR r.valid_end  > ?)
                   AND r.ingest_end   IS NULL
-                  -- Cycle prevention
-                  AND instr(hop.path, r.target_id) = 0
+                  -- Cycle prevention: exact match with delimiters
+                  AND instr(hop.path, '>' || r.target_id || '>') = 0
             )
             SELECT DISTINCT
                 hop.eid,

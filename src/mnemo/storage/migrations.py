@@ -81,23 +81,40 @@ def apply_migrations(conn: sqlite3.Connection) -> int:
     Returns:
         The new schema version after migrations.
     """
-    current_ver = get_schema_version(conn)
+    try:
+        conn.execute("BEGIN IMMEDIATE;")
+    except Exception:
+        # Already in a transaction or in-memory lock
+        pass
 
-    for target_ver, migration_fn in _MIGRATIONS:
-        if current_ver < target_ver:
-            migration_fn(conn)
-            set_schema_version(conn, target_ver)
-            current_ver = target_ver
+    try:
+        current_ver = get_schema_version(conn)
 
-    # Ensure FTS5 synchronization after any structural updates
-    verify_and_repair_fts(conn)
-    return current_ver
+        for target_ver, migration_fn in _MIGRATIONS:
+            if current_ver < target_ver:
+                migration_fn(conn)
+                set_schema_version(conn, target_ver)
+                current_ver = target_ver
+
+        # Ensure FTS5 synchronization after any structural updates
+        verify_and_repair_fts(conn)
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        return current_ver
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
 
 
 def verify_and_repair_fts(conn: sqlite3.Connection) -> bool:
     """Verify that ``facts_fts`` is in sync with active ``facts``.
 
-    If out of sync, automatically rebuilds the FTS5 index.
+    If out of sync or if ID mismatch is detected, automatically rebuilds FTS5 index.
 
     Args:
         conn: Active SQLite connection.
@@ -117,7 +134,17 @@ def verify_and_repair_fts(conn: sqlite3.Connection) -> bool:
         active_count = int(active_facts_row["c"]) if active_facts_row else 0
         fts_count = int(fts_row["c"]) if fts_row else 0
 
-        if active_count != fts_count:
+        # Check for missing IDs between active facts and FTS
+        id_mismatch_row = conn.execute(
+            """
+            SELECT 1 FROM facts f
+            LEFT JOIN facts_fts ft ON f.id = ft.id
+            WHERE f.ingest_end IS NULL AND f.valid_end IS NULL AND ft.id IS NULL
+            LIMIT 1;
+            """
+        ).fetchone()
+
+        if active_count != fts_count or id_mismatch_row is not None:
             # Rebuild FTS5 index from active facts
             conn.execute("DELETE FROM facts_fts;")
             conn.execute(

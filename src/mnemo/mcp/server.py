@@ -1,4 +1,4 @@
-"""MCP server entry point for Mnemo (supporting FastMCP and MCPServer).
+"""MCP server entry point for Mnemo using FastMCP.
 
 Usage (stdio transport — for Claude Desktop / Antigravity / Cursor)::
 
@@ -11,7 +11,38 @@ Or via the CLI::
 
 from __future__ import annotations
 
-from typing import Any
+try:
+    from mcp.server.fastmcp import FastMCP  # type: ignore[attr-defined]
+except (ImportError, ModuleNotFoundError):
+    try:
+        from mcp.server.mcpserver import MCPServer as FastMCP  # type: ignore[no-redef]
+    except Exception:
+
+        class FastMCP:  # type: ignore[no-redef]
+            def __init__(self, name: str, **kwargs: object) -> None:
+                self.name = name
+
+            def tool(self, *args: object, **kwargs: object) -> object:
+                def dec(fn: object) -> object:
+                    return fn
+
+                return dec
+
+            def resource(self, *args: object, **kwargs: object) -> object:
+                def dec(fn: object) -> object:
+                    return fn
+
+                return dec
+
+            def prompt(self, *args: object, **kwargs: object) -> object:
+                def dec(fn: object) -> object:
+                    return fn
+
+                return dec
+
+            def run(self, *args: object, **kwargs: object) -> None:
+                pass
+
 
 from mnemo.engine.audn import AUDNClassifier
 from mnemo.engine.retriever import HybridRetriever
@@ -21,55 +52,14 @@ from mnemo.storage.fts_store import FTSStore
 from mnemo.storage.graph_store import GraphStore
 from mnemo.storage.vector_store import VectorStore, create_embedder
 
+# ---------------------------------------------------------------------------
+# FastMCP application
+# ---------------------------------------------------------------------------
 
-def _resolve_mcp_server_cls() -> Any:
-    try:
-        import mcp.server.mcpserver as _m2
-
-        return _m2.MCPServer
-    except Exception:
-        pass
-    try:
-        import mcp.server.fastmcp as _m1
-
-        fastmcp_cls = getattr(_m1, "FastMCP", None)
-        if fastmcp_cls is not None:
-            return fastmcp_cls
-    except Exception:
-        pass
-
-    class _FallbackMCP:
-        def __init__(self, name: str, **kwargs: Any) -> None:
-            self.name = name
-
-        def tool(self, *args: Any, **kwargs: Any) -> Any:
-            def dec(fn: Any) -> Any:
-                return fn
-
-            return dec
-
-        def resource(self, *args: Any, **kwargs: Any) -> Any:
-            def dec(fn: Any) -> Any:
-                return fn
-
-            return dec
-
-        def prompt(self, *args: Any, **kwargs: Any) -> Any:
-            def dec(fn: Any) -> Any:
-                return fn
-
-            return dec
-
-        def run(self, *args: Any, **kwargs: Any) -> None:
-            pass
-
-    return _FallbackMCP
-
-
-FastMCP: Any = _resolve_mcp_server_cls()
+mcp_app = FastMCP("mnemo")
 
 # ---------------------------------------------------------------------------
-# Shared singleton state  (initialised lazily on first use)
+# Shared singleton state (initialised lazily on first use)
 # ---------------------------------------------------------------------------
 
 _db: Database | None = None
@@ -133,20 +123,6 @@ def _get_tier_manager() -> TierManager:
         _tier_mgr = TierManager()
     return _tier_mgr
 
-
-# ---------------------------------------------------------------------------
-# FastMCP application
-# ---------------------------------------------------------------------------
-
-mcp_app = FastMCP(
-    "mnemo",
-    version="0.1.0",
-    description=(
-        "Mnemo — cross-platform bitemporal long-term memory for AI agents. "
-        "Provides hybrid 3-channel retrieval (Vector + FTS5 + Graph), "
-        "Ebbinghaus salience decay, AUDN classification, and TOON-serialised output."
-    ),
-)
 
 # Register tools, resources, and prompts from sub-modules.
 # These modules call ``mcp_app.tool()`` etc. at import time.

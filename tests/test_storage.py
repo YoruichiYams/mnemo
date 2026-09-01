@@ -215,6 +215,32 @@ class TestGraphStore:
             assert len(neighbours) == 1
             assert neighbours[0][0] == "n2"
 
+    def test_substring_id_cycle_prevention(
+        self, in_memory_db: Database, graph_store: GraphStore
+    ) -> None:
+        """Entities with prefix IDs (e.g. node_1 and node_10) do not trigger false cycle prevention."""
+        now = time.time()
+        with in_memory_db.session() as conn:
+            # node_1 -> node_10 -> node_100
+            for nid in ("node_1", "node_10", "node_100"):
+                conn.execute(
+                    "INSERT INTO entities (id, name, entity_type, valid_start, ingest_start, last_accessed_at) VALUES (?, ?, 'concept', ?, ?, ?)",
+                    (nid, f"Name_{nid}", now, now, now),
+                )
+            conn.execute(
+                "INSERT INTO relations (id, source_id, target_id, relation_type, weight, valid_start, ingest_start) VALUES ('r1', 'node_1', 'node_10', 'links', 1.0, ?, ?)",
+                (now, now),
+            )
+            conn.execute(
+                "INSERT INTO relations (id, source_id, target_id, relation_type, weight, valid_start, ingest_start) VALUES ('r2', 'node_10', 'node_100', 'links', 1.0, ?, ?)",
+                (now, now),
+            )
+
+            neighbours = graph_store.get_neighbours("node_1", conn, max_depth=3, valid_at=now)
+            assert len(neighbours) == 2
+            eids = [n[0] for n in neighbours]
+            assert eids == ["node_10", "node_100"]
+
 
 class TestDatabaseConnection:
     """Test suite for Database connection manager and schema initialization."""

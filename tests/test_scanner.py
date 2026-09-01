@@ -115,3 +115,64 @@ class AuthService(BaseModel):
             ).fetchone()
             assert rel is not None
             assert rel["relation_type"] == "MENTIONS"
+
+    def test_deleted_file_reconciliation(self, tmp_path: Path) -> None:
+        """Deleted files are removed from cache and their entities are soft-deleted."""
+        src_dir = tmp_path / "src" / "temp"
+        src_dir.mkdir(parents=True)
+        f1 = src_dir / "transient.py"
+        f1.write_text("class TransientWorker:\n    pass\n", encoding="utf-8")
+
+        db = Database(":memory:")
+        scanner = ProjectScanner(root_path=tmp_path)
+
+        with db.session() as conn:
+            scanner.scan(conn)
+
+            # Check entity active
+            e = conn.execute(
+                "SELECT name, valid_end FROM entities WHERE name = 'temp.transient.TransientWorker'"
+            ).fetchone()
+            assert e is not None
+            assert e["valid_end"] is None
+
+            # Delete file from disk and rescan
+            f1.unlink()
+            scanner.scan(conn)
+
+            # Check cache cleaned
+            cache_row = conn.execute(
+                "SELECT file_path FROM file_scan_cache WHERE file_path LIKE '%transient.py%'"
+            ).fetchone()
+            assert cache_row is None
+
+            # Check entity soft-deleted
+            e_del = conn.execute(
+                "SELECT valid_end FROM entities WHERE name = 'temp.transient.TransientWorker'"
+            ).fetchone()
+            assert e_del is not None
+            assert e_del["valid_end"] is not None
+
+    def test_relative_imports(self, tmp_path: Path) -> None:
+        """Relative imports (from . import utils, from ..core import engine) are resolved."""
+        pkg_dir = tmp_path / "src" / "app" / "api"
+        pkg_dir.mkdir(parents=True)
+        f1 = pkg_dir / "routes.py"
+        f1.write_text(
+            """
+from . import handlers
+from ..core import Engine
+""",
+            encoding="utf-8",
+        )
+
+        db = Database(":memory:")
+        scanner = ProjectScanner(root_path=tmp_path)
+
+        with db.session() as conn:
+            scanner.scan(conn)
+
+            entities = conn.execute("SELECT name FROM entities").fetchall()
+            names = {e["name"] for e in entities}
+            assert "app.api.handlers" in names or "app.api" in names
+            assert "app.core" in names

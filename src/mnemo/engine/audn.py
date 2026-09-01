@@ -105,7 +105,11 @@ class AUDNClassifier:
         fact = Fact(text=text, category=category, tier=tier, metadata=metadata or {})
         now = time.time()
         embedding = self._vs.embed_text(text)
+        import json
+
         from mnemo.storage.vector_store import _vec_to_blob
+
+        meta_json = json.dumps(fact.metadata or metadata or {})
 
         conn.execute(
             "INSERT INTO facts "
@@ -125,7 +129,7 @@ class AUDNClassifier:
                 now,
                 None,
                 _vec_to_blob(embedding),
-                "{}",
+                meta_json,
             ),
         )
         fact.embedding = embedding.tolist()

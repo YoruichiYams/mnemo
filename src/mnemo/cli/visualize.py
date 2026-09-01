@@ -237,6 +237,8 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
     Returns:
         Full standalone HTML document string.
     """
+    import html
+
     metrics = data.get("metrics", {})
     total_facts = metrics.get("total_facts", 0)
     total_entities = metrics.get("total_entities", 0)
@@ -244,20 +246,27 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
     core_pct = metrics.get("core_pct", 0.0)
     mean_salience = metrics.get("mean_salience", 0.0)
 
-    nodes_json = json.dumps(data["nodes"])
-    node_colors_json = json.dumps(data["node_colors"])
-    node_x_json = json.dumps(data.get("node_x", []))
-    node_y_json = json.dumps(data.get("node_y", []))
-    sources_json = json.dumps(data["sources"])
-    targets_json = json.dumps(data["targets"])
-    values_json = json.dumps(data["values"])
+    def _safe_json_embed(obj: Any) -> str:
+        # Prevent XSS via breaking out of <script> tags
+        return json.dumps(obj).replace("</", "<\\/")
+
+    safe_project_name = html.escape(project_name)
+    safe_nodes = [html.escape(str(n)) for n in data.get("nodes", [])]
+
+    nodes_json = _safe_json_embed(safe_nodes)
+    node_colors_json = _safe_json_embed(data.get("node_colors", []))
+    node_x_json = _safe_json_embed(data.get("node_x", []))
+    node_y_json = _safe_json_embed(data.get("node_y", []))
+    sources_json = _safe_json_embed(data.get("sources", []))
+    targets_json = _safe_json_embed(data.get("targets", []))
+    values_json = _safe_json_embed(data.get("values", []))
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{project_name} - Knowledge Flow</title>
+    <title>{safe_project_name} - Knowledge Flow</title>
     <!-- Google Fonts: Google Sans Flex & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -309,6 +318,47 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
             margin-top: 4px;
             font-weight: 400;
         }}
+        .header-actions {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .zoom-controls {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 4px;
+        }}
+        .zoom-btn {{
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.12s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }}
+        .zoom-btn:hover {{
+            color: var(--text-primary);
+            background: #1a1c22;
+        }}
+        .reset-btn {{
+            font-size: 10px;
+            letter-spacing: 0.04em;
+            border-left: 1px solid var(--border);
+            border-radius: 0 3px 3px 0;
+            padding-left: 8px;
+        }}
         .badge {{
             font-size: 11px;
             font-family: var(--font-mono);
@@ -355,16 +405,40 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
             border-radius: 6px;
             padding: 20px;
             height: 600px;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }}
+        .chart-container:active {{
+            cursor: grabbing;
         }}
         #sankey-plot {{
             width: 100%;
             height: 100%;
+        }}
+        /* Plotly Modebar Styling for Deep Black */
+        .modebar-container {{
+            top: 8px !important;
+            right: 8px !important;
+        }}
+        .modebar {{
+            background: transparent !important;
+        }}
+        .modebar-btn svg path {{
+            fill: #70737d !important;
+        }}
+        .modebar-btn:hover svg path {{
+            fill: #f0f2f5 !important;
+        }}
+        .modebar-btn.active svg path {{
+            fill: #58a6ff !important;
         }}
         .footer {{
             max-width: 1240px;
             margin: 16px auto 0 auto;
             display: flex;
             justify-content: space-between;
+            align-items: center;
             font-size: 11px;
             color: var(--text-muted);
             font-family: var(--font-mono);
@@ -374,10 +448,17 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
 <body>
     <div class="header">
         <div class="title-group">
-            <h1>{project_name}</h1>
+            <h1>{safe_project_name}</h1>
             <p>Knowledge Flow &bull; Bitemporal Graph</p>
         </div>
-        <div class="badge">SQLite WAL &bull; RRF k=60</div>
+        <div class="header-actions">
+            <div class="zoom-controls">
+                <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">+</button>
+                <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out">&minus;</button>
+                <button class="zoom-btn reset-btn" onclick="resetZoom()" title="Reset View">&#x27F2; Reset</button>
+            </div>
+            <div class="badge">SQLite WAL &bull; RRF k=60</div>
+        </div>
     </div>
 
     <div class="metrics-grid">
@@ -403,7 +484,7 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
         </div>
     </div>
 
-    <div class="chart-container">
+    <div class="chart-container" id="chartWrapper">
         <div id="sankey-plot"></div>
     </div>
 
@@ -473,10 +554,86 @@ def generate_html_report(data: dict[str, Any], project_name: str = "Mnemo Memory
 
         const config = {{
             responsive: true,
-            displayModeBar: false
+            scrollZoom: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ["lasso2d", "select2d"],
+            displaylogo: false
         }};
 
-        Plotly.newPlot("sankey-plot", plotData, layout, config);
+        Plotly.newPlot("sankey-plot", plotData, layout, config).then(() => {{
+            setupZoomAndPan();
+        }});
+
+        let currentZoom = 1.0;
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        let startX = 0;
+        let startY = 0;
+
+        function getTargetSvg() {{
+            return document.querySelector("#sankey-plot .main-svg") || document.querySelector("#sankey-plot svg");
+        }}
+
+        function applyTransform() {{
+            const svg = getTargetSvg();
+            if (svg) {{
+                svg.style.transformOrigin = "center center";
+                svg.style.transform = `translate(${{panX}}px, ${{panY}}px) scale(${{currentZoom}})`;
+                svg.style.transition = isPanning ? "none" : "transform 0.12s ease-out";
+            }}
+        }}
+
+        function zoomIn() {{
+            currentZoom = Math.min(currentZoom * 1.25, 5.0);
+            applyTransform();
+        }}
+
+        function zoomOut() {{
+            currentZoom = Math.max(currentZoom / 1.25, 0.3);
+            applyTransform();
+        }}
+
+        function resetZoom() {{
+            currentZoom = 1.0;
+            panX = 0;
+            panY = 0;
+            applyTransform();
+        }}
+
+        function setupZoomAndPan() {{
+            const container = document.getElementById("chartWrapper");
+            if (!container) return;
+
+            container.addEventListener("wheel", (e) => {{
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+                currentZoom = Math.max(0.3, Math.min(5.0, currentZoom * zoomFactor));
+                applyTransform();
+            }}, {{ passive: false }});
+
+            container.addEventListener("mousedown", (e) => {{
+                if (e.button === 0) {{
+                    isPanning = true;
+                    startX = e.clientX - panX;
+                    startY = e.clientY - panY;
+                }}
+            }});
+
+            window.addEventListener("mousemove", (e) => {{
+                if (!isPanning) return;
+                panX = e.clientX - startX;
+                panY = e.clientY - startY;
+                applyTransform();
+            }});
+
+            window.addEventListener("mouseup", () => {{
+                if (isPanning) {{
+                    isPanning = false;
+                    applyTransform();
+                }}
+            }});
+        }}
     </script>
 </body>
 </html>
