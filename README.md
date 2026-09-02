@@ -2,7 +2,7 @@
 
 > Autonomous bitemporal memory engine and AST-based knowledge graph for AI agents via Model Context Protocol (MCP). Zero external infrastructure, single-file SQLite storage.
 
-[![PyPI version](https://img.shields.io/pypi/v/mnemo-agentmcp.svg)](https://pypi.org/project/mnemo-agentmcp/)
+[![PyPI version](https://img.shields.io/pypi/v/mnemo-agentmcp.svg)](https://pypi.org/project/mnemo-mcp-agent/)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
