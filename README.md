@@ -1,78 +1,26 @@
 # Mnemo
 
-Autonomous bitemporal memory engine for AI coding agents.
+> Autonomous bitemporal memory engine and AST-based knowledge graph for AI agents via Model Context Protocol (MCP). Zero external infrastructure, single-file SQLite storage.
 
-Mnemo provides persistent, cross-session architectural memory. It automatically maps repository structure, tracks context across edits, and exposes structured retrieval via Model Context Protocol (FastMCP) and clean CLI tools.
+[![PyPI version](https://img.shields.io/pypi/v/mnemo-agentmcp.svg)](https://pypi.org/project/mnemo-agentmcp/)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-## Key Features
+---
 
-* **Autonomous AST Mapping:** Automatically parses modules, classes, and dependencies with incremental SHA-256 diff caching.
-* **Bitemporal Knowledge Engine:** Tracks both event time and assertion time using SQLite with WAL mode and full-text search (FTS5).
-* **Self-Healing Storage:** Dynamic schema migrations and automatic FTS index repair.
-* **Dark Minimal Visualizer:** Interactive 3-column Sankey graph mapping categories, memory tiers, and architecture flows.
+## Core Capabilities
+
+* **Bitemporal Fact Store:** Separates validity timeline (`valid_time`) from system recording time (`ingest_time`) using SQLite WAL mode.
+* **3-Channel Hybrid Retrieval:** Fuses dense vector embeddings, FTS5 full-text search, and recursive CTE graph traversal via Reciprocal Rank Fusion (RRF).
+* **Ebbinghaus Memory Decay:** Four dynamic tiers (`Core`, `Working`, `Peripheral`, `Archived`) prevent context bloat through piecewise exponential decay.
+* **AST Knowledge Graph:** Parses project syntax trees, tracks cross-file class/function relationships, and reconciles deleted modules automatically.
+* **Zero Infrastructure:** Operates locally inside a single embedded database file without requiring Docker, external vector databases, or cloud accounts.
+
+---
 
 ## Installation
 
-```bash
-pip install mnemo
-```
-
-## Quick Start
-
-### 1. Initialize Memory Store
+Install the package directly from PyPI into your environment:
 
 ```bash
-mnemo init
-```
-
-### 2. Autonomous Repository Scan
-
-```bash
-mnemo scan .
-```
-
-### 3. Interactive Knowledge Visualization
-
-```bash
-mnemo visualize
-```
-
-### 4. Health Diagnostics
-
-```bash
-mnemo doctor
-```
-
-## Model Context Protocol (FastMCP)
-
-Mnemo integrates natively with Claude Desktop, Cursor, Antigravity, and any MCP client over stdio:
-
-```json
-{
-  "mcpServers": {
-    "mnemo": {
-      "command": "mnemo",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-### Available MCP Tools
-
-* `mnemo_remember`: Stores or updates facts through the AUDN classifier and auto-links mentioned code entities.
-* `mnemo_search`: Hybrid 3-channel retrieval (Vector + FTS5 + Recursive CTE Graph) fused via Reciprocal Rank Fusion (RRF).
-* `mnemo_scan_project`: Triggers an on-demand incremental AST scan of the repository.
-* `mnemo_invalidate`: Soft-deletes records with bitemporal invalidation timestamps.
-* `mnemo_tier_decay`: Recalculates Ebbinghaus salience decay and tier promotions/demotions.
-* `mnemo_get_debt_ledger`: Detects decaying working-tier facts, stale core assumptions, and architectural debt.
-
-## Architecture
-
-* **Storage:** Local SQLite in WAL mode with FTS5 BM25, vector embeddings, and recursive CTE graph traversal.
-* **Serialization:** Token-Optimized Object Notation (TOON) providing up to 56% token savings over standard JSON.
-* **CLI:** Borderless Matrix interface powered by Typer and Rich.
-
-## License
-
-MIT License. Copyright (c) 2026 Mnemo Contributors.
+pip install mnemo-agentmcp
