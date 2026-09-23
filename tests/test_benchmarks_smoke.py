@@ -32,7 +32,10 @@ class TestBenchmarkMetrics:
         ranked = ["f1", "f2", "f3"]
         assert calculate_mrr(ranked, {"f1"}) == 1.0
         assert calculate_mrr(ranked, {"f2"}) == 0.5
-        assert calculate_mrr(ranked, {"f3"}) == round(1.0 / 3, 4) or abs(calculate_mrr(ranked, {"f3"}) - 1.0 / 3) < 1e-4
+        assert (
+            calculate_mrr(ranked, {"f3"}) == round(1.0 / 3, 4)
+            or abs(calculate_mrr(ranked, {"f3"}) - 1.0 / 3) < 1e-4
+        )
         assert calculate_mrr(ranked, {"f99"}) == 0.0
 
     def test_ndcg_at_k(self) -> None:

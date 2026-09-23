@@ -84,7 +84,9 @@ class TierManager:
             )
             is_trusted = (source_type != "tool_output") and (confidence >= 0.8)
 
-            is_stale = bool(row["is_stale"]) if "is_stale" in row.keys() and row["is_stale"] else False
+            is_stale = (
+                bool(row["is_stale"]) if "is_stale" in row.keys() and row["is_stale"] else False
+            )
             is_pinned = bool(metadata.get("pinned") or metadata.get("permanent"))
 
             # Pinning protection: untrusted facts or drift-stale facts are not exempt from decay
@@ -104,7 +106,8 @@ class TierManager:
                 if is_stale
                 else (
                     int(row["reinforcement_count"])
-                    if "reinforcement_count" in row.keys() and row["reinforcement_count"] is not None
+                    if "reinforcement_count" in row.keys()
+                    and row["reinforcement_count"] is not None
                     else 0
                 )
             )

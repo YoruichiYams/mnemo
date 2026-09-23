@@ -43,7 +43,11 @@ class GraphStore:
         max_depth = min(max(1, int(max_depth)), 4)
         from mnemo.storage.state import parse_as_of
 
-        target_time = parse_as_of(as_of) if as_of is not None else (valid_at if valid_at is not None else None)
+        target_time = (
+            parse_as_of(as_of)
+            if as_of is not None
+            else (valid_at if valid_at is not None else None)
+        )
 
         if target_time is not None:
             sql = """
@@ -191,7 +195,11 @@ class GraphStore:
         """
         from mnemo.storage.state import parse_as_of
 
-        target_time = parse_as_of(as_of) if as_of is not None else (valid_at if valid_at is not None else None)
+        target_time = (
+            parse_as_of(as_of)
+            if as_of is not None
+            else (valid_at if valid_at is not None else None)
+        )
         escaped_name = entity_name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
         # Step 1: resolve name -> entity id (exact match or suffix match with escaping)
@@ -214,7 +222,14 @@ class GraphStore:
                       AND ingest_start <= ? AND (ingest_end IS NULL OR ingest_end > ?)
                     ORDER BY length(name) DESC LIMIT 1;
                     """,
-                    (entity_name, f"%.{escaped_name}", target_time, target_time, target_time, target_time),
+                    (
+                        entity_name,
+                        f"%.{escaped_name}",
+                        target_time,
+                        target_time,
+                        target_time,
+                        target_time,
+                    ),
                 ).fetchone()
         else:
             now = time.time()
@@ -266,7 +281,12 @@ class GraphStore:
                   AND f.valid_start <= ? AND (f.valid_end IS NULL OR f.valid_end > ?)
                   AND f.ingest_start <= ? AND (f.ingest_end IS NULL OR f.ingest_end > ?);
             """
-            params = list(eid_to_depth.keys()) + [target_time, target_time, target_time, target_time]
+            params = list(eid_to_depth.keys()) + [
+                target_time,
+                target_time,
+                target_time,
+                target_time,
+            ]
         else:
             now = time.time()
             links_sql = f"""

@@ -33,8 +33,14 @@ CONFIGS: list[AblationConfig] = [
     AblationConfig(name="dense_only", label="Config A (Dense Only)", channels=("vector",)),
     AblationConfig(name="sparse_only", label="Config B (Sparse Only)", channels=("fts",)),
     AblationConfig(name="graph_only", label="Config C (Graph Only)", channels=("graph",)),
-    AblationConfig(name="dense_sparse", label="Config D (Dense + Sparse)", channels=("vector", "fts")),
-    AblationConfig(name="mnemo_full", label="Config E (Mnemo Full: 3-Channel + RRF)", channels=("vector", "fts", "graph")),
+    AblationConfig(
+        name="dense_sparse", label="Config D (Dense + Sparse)", channels=("vector", "fts")
+    ),
+    AblationConfig(
+        name="mnemo_full",
+        label="Config E (Mnemo Full: 3-Channel + RRF)",
+        channels=("vector", "fts", "graph"),
+    ),
 ]
 
 
@@ -67,7 +73,9 @@ def run_ablation_study(dataset: BenchmarkDataset) -> dict[str, Any]:
                 group_metrics[q.group].append(m)
                 all_metrics.append(m)
 
-            aggregated_by_group = {grp: aggregate_metrics(metrics) for grp, metrics in group_metrics.items()}
+            aggregated_by_group = {
+                grp: aggregate_metrics(metrics) for grp, metrics in group_metrics.items()
+            }
             aggregated_overall = aggregate_metrics(all_metrics)
 
             results[cfg.name] = {

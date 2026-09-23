@@ -52,8 +52,7 @@ def _link_explicit_entities(
                 except Exception:
                     pass
             ent_hash = (
-                props.get("hash")
-                or hashlib.sha256(str(row["name"]).encode("utf-8")).hexdigest()
+                props.get("hash") or hashlib.sha256(str(row["name"]).encode("utf-8")).hexdigest()
             )
         else:
             eid = str(uuid.uuid4())
@@ -128,7 +127,10 @@ def mnemo_remember(
         try:
             forced = AUDNOperation(op_str)
         except ValueError:
-            valid_ops = ", ".join(op.value for op in AUDNOperation if op != AUDNOperation.PURGE) + ", reinforce"
+            valid_ops = (
+                ", ".join(op.value for op in AUDNOperation if op != AUDNOperation.PURGE)
+                + ", reinforce"
+            )
             return f"[ERROR] invalid force_op '{force_op}'. Expected one of: {valid_ops}"
     else:
         forced = None
@@ -139,13 +141,20 @@ def mnemo_remember(
     now = time.time()
     with db.session() as conn:
         # Pre-check target fact protection if force_op specified with target_fact_id
-        if forced in (AUDNOperation.UPDATE, AUDNOperation.CORRECT, AUDNOperation.DELETE) and target_fact_id:
-            row = conn.execute("SELECT source_type, tier FROM facts WHERE id = ?", (target_fact_id,)).fetchone()
+        if (
+            forced in (AUDNOperation.UPDATE, AUDNOperation.CORRECT, AUDNOperation.DELETE)
+            and target_fact_id
+        ):
+            row = conn.execute(
+                "SELECT source_type, tier FROM facts WHERE id = ?", (target_fact_id,)
+            ).fetchone()
             if row:
                 ex_src = row["source_type"] or "agent"
                 ex_tier = str(row["tier"])
                 if ex_src in ("human_developer", "git_commit") or ex_tier == "core":
-                    return "[FORBIDDEN] Cannot force modification of protected core/developer memory"
+                    return (
+                        "[FORBIDDEN] Cannot force modification of protected core/developer memory"
+                    )
 
         op, existing_id = audn.classify(
             text,
@@ -162,13 +171,20 @@ def mnemo_remember(
             return "[FORBIDDEN] Physical purge is an administrative CLI-only operation"
 
         # Check target fact protection after classification
-        if forced in (AUDNOperation.UPDATE, AUDNOperation.CORRECT, AUDNOperation.DELETE) and target_id:
-            row = conn.execute("SELECT source_type, tier FROM facts WHERE id = ?", (target_id,)).fetchone()
+        if (
+            forced in (AUDNOperation.UPDATE, AUDNOperation.CORRECT, AUDNOperation.DELETE)
+            and target_id
+        ):
+            row = conn.execute(
+                "SELECT source_type, tier FROM facts WHERE id = ?", (target_id,)
+            ).fetchone()
             if row:
                 ex_src = row["source_type"] or "agent"
                 ex_tier = str(row["tier"])
                 if ex_src in ("human_developer", "git_commit") or ex_tier == "core":
-                    return "[FORBIDDEN] Cannot force modification of protected core/developer memory"
+                    return (
+                        "[FORBIDDEN] Cannot force modification of protected core/developer memory"
+                    )
 
         if op == AUDNOperation.CORRECT:
             if target_id:
@@ -246,9 +262,7 @@ def mnemo_remember(
 # -----------------------------------------------------------------------
 @mcp_app.tool(
     name="mnemo_purge",
-    description=(
-        "Administrative physical purge (disabled via MCP for security)."
-    ),
+    description=("Administrative physical purge (disabled via MCP for security)."),
 )
 def mnemo_purge(
     fact_id: str,
@@ -358,7 +372,9 @@ def mnemo_invalidate(fact_id: str) -> str:
     audn = _get_audn()
 
     with db.session() as conn:
-        row = conn.execute("SELECT source_type, tier FROM facts WHERE id = ?", (fact_id,)).fetchone()
+        row = conn.execute(
+            "SELECT source_type, tier FROM facts WHERE id = ?", (fact_id,)
+        ).fetchone()
         if row:
             ex_source = row["source_type"] or "agent"
             ex_tier = str(row["tier"])

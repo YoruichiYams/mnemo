@@ -42,6 +42,7 @@ venv.bak/
 # Testing & Linting
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .mypy_cache/
 .ruff_cache/
@@ -49,6 +50,8 @@ htmlcov/
 # IDE & OS files
 .vscode/
 .idea/
+.gemini/
+.agents/
 *.swp
 *.swo
 .DS_Store

@@ -114,13 +114,41 @@ def test_spaced_repetition_multiplicative_stability() -> None:
     lambda_param = 0.05
 
     # n = 0: R = 1.0
-    s_n0 = calculate_salience(1.0, delta_ticks=delta_ticks, reinforcement_count=0, lambda_param=lambda_param, alpha=alpha, r0=r0)
+    s_n0 = calculate_salience(
+        1.0,
+        delta_ticks=delta_ticks,
+        reinforcement_count=0,
+        lambda_param=lambda_param,
+        alpha=alpha,
+        r0=r0,
+    )
     # n = 1: R = 1.5
-    s_n1 = calculate_salience(1.0, delta_ticks=delta_ticks, reinforcement_count=1, lambda_param=lambda_param, alpha=alpha, r0=r0)
+    s_n1 = calculate_salience(
+        1.0,
+        delta_ticks=delta_ticks,
+        reinforcement_count=1,
+        lambda_param=lambda_param,
+        alpha=alpha,
+        r0=r0,
+    )
     # n = 2: R = 2.25
-    s_n2 = calculate_salience(1.0, delta_ticks=delta_ticks, reinforcement_count=2, lambda_param=lambda_param, alpha=alpha, r0=r0)
+    s_n2 = calculate_salience(
+        1.0,
+        delta_ticks=delta_ticks,
+        reinforcement_count=2,
+        lambda_param=lambda_param,
+        alpha=alpha,
+        r0=r0,
+    )
     # n = 3: R = 3.375
-    s_n3 = calculate_salience(1.0, delta_ticks=delta_ticks, reinforcement_count=3, lambda_param=lambda_param, alpha=alpha, r0=r0)
+    s_n3 = calculate_salience(
+        1.0,
+        delta_ticks=delta_ticks,
+        reinforcement_count=3,
+        lambda_param=lambda_param,
+        alpha=alpha,
+        r0=r0,
+    )
 
     assert s_n0 < s_n1 < s_n2 < s_n3
     # Significant retention difference over 40 ticks
@@ -135,7 +163,9 @@ def test_search_is_idempotent_no_auto_reinforcement(
 ) -> None:
     """Repeated searches do NOT bump access_count, reinforcement_count, or salience."""
     with in_memory_db.session() as conn:
-        fact = audn_classifier.execute_add("PostgreSQL connection pooling configuration", "db", conn)
+        fact = audn_classifier.execute_add(
+            "PostgreSQL connection pooling configuration", "db", conn
+        )
         fid = fact.id
 
         # Search 10 times
@@ -238,7 +268,9 @@ def test_physical_correction_vs_logical_invalidation(
         time.sleep(0.02)
 
         # User realizes typo: it was Redis 7.0 all along
-        corrected_fact = audn_classifier.execute_correct(f1_id, "System uses Redis 7.0", "cache", conn)
+        corrected_fact = audn_classifier.execute_correct(
+            f1_id, "System uses Redis 7.0", "cache", conn
+        )
 
         time.sleep(0.02)
         t_after_correct = time.time()

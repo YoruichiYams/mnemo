@@ -669,4 +669,3 @@ def link_fact_to_entities(
             )
 
     return linked_ids
-

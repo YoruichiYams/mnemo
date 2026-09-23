@@ -132,9 +132,7 @@ def run_performance_benchmarks(
         for i in range(10):
             p = tmp_path / f"service_{i}.py"
             p.write_text(
-                f"class Service{i}:\n"
-                f"    def do_action_{i}(self):\n"
-                f"        return {i} * 2\n",
+                f"class Service{i}:\n    def do_action_{i}(self):\n        return {i} * 2\n",
                 encoding="utf-8",
             )
 
@@ -154,9 +152,7 @@ def run_performance_benchmarks(
     profile_summary["scan_full_ms"] = round(full_scan_ms, 2)
     profile_summary["scan_incremental_ms"] = round(inc_scan_ms, 2)
     profile_summary["scan_speedup"] = (
-        round(full_scan_ms / max(0.001, inc_scan_ms), 1)
-        if inc_scan_ms > 0
-        else 1.0
+        round(full_scan_ms / max(0.001, inc_scan_ms), 1) if inc_scan_ms > 0 else 1.0
     )
 
     return {

@@ -79,13 +79,15 @@ def generate_markdown_report(
             f"| **{res['label']}** | `{ch}` | **{ov['hit@1']:.3f}** | {ov['hit@3']:.3f} | {ov['hit@5']:.3f} | **{ov['mrr']:.3f}** | **{ov['ndcg@5']:.3f}** |"
         )
 
-    lines.extend([
-        "",
-        "### Group-by-Group Performance Breakdown (MRR & NDCG@5)",
-        "",
-        "| Configuration | Semantic MRR | Code ID MRR | Graph Dep MRR | Bitemporal MRR |",
-        "|---|---|---|---|---|",
-    ])
+    lines.extend(
+        [
+            "",
+            "### Group-by-Group Performance Breakdown (MRR & NDCG@5)",
+            "",
+            "| Configuration | Semantic MRR | Code ID MRR | Graph Dep MRR | Bitemporal MRR |",
+            "|---|---|---|---|---|",
+        ]
+    )
 
     for _cfg_name, res in ablation_results.items():
         bg = res["by_group"]
@@ -97,32 +99,34 @@ def generate_markdown_report(
             f"| **{res['label']}** | {sem_mrr:.3f} | {code_mrr:.3f} | {graph_mrr:.3f} | {bi_mrr:.3f} |"
         )
 
-    lines.extend([
-        "",
-        "---",
-        "",
-        "## 3. Experiment 2: Bitemporal Precision & AST Code Drift",
-        "",
-        "| Evaluation Aspect | Metric | Result | Benchmark Target | Status |",
-        "|---|---|---|---|---|",
-        f"| Historical Slice Reconstruction (`as_of`) | Accuracy % | **{bitemporal_results['bitemporal_accuracy_pct']:.1f}%** | 100% | PASS |",
-        f"| Bitemporal Query Matches | Valid Hits | **{bitemporal_results['correct_bitemporal_queries']} / {bitemporal_results['total_bitemporal_queries']}** | All | PASS |",
-        f"| AST Code Drift Flagging | Stale Detection Rate | **{bitemporal_results['stale_detection_rate_pct']:.1f}%** | 100% | PASS |",
-        f"| Search Drift Warning | Warning Propagation | **{bitemporal_results['warning_emission_rate_pct']:.1f}%** | 100% | PASS |",
-        "",
-        "> [!NOTE]",
-        "> When an AST node's content hash drifts, all facts connected via `fact_entity_links` are flagged (`is_stale = 1`),",
-        "> their stability $R$ is reset, forgetting speed is tripled ($\\\\lambda \\\\times 3$), and search results carry the `stale_code_drift` warning.",
-        "",
-        "---",
-        "",
-        "## 4. Experiment 3: Latency & Scalability Profile",
-        "",
-        f"Measurements taken over `{perf_results['iterations']}` iterations on `{scale}` dataset ({dataset_stats['facts']:,} facts).",
-        "",
-        "| Operation | p50 (ms) | p95 (ms) | p99 (ms) | Mean (ms) | Throughput (ops/sec) |",
-        "|---|---|---|---|---|---|",
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            "## 3. Experiment 2: Bitemporal Precision & AST Code Drift",
+            "",
+            "| Evaluation Aspect | Metric | Result | Benchmark Target | Status |",
+            "|---|---|---|---|---|",
+            f"| Historical Slice Reconstruction (`as_of`) | Accuracy % | **{bitemporal_results['bitemporal_accuracy_pct']:.1f}%** | 100% | PASS |",
+            f"| Bitemporal Query Matches | Valid Hits | **{bitemporal_results['correct_bitemporal_queries']} / {bitemporal_results['total_bitemporal_queries']}** | All | PASS |",
+            f"| AST Code Drift Flagging | Stale Detection Rate | **{bitemporal_results['stale_detection_rate_pct']:.1f}%** | 100% | PASS |",
+            f"| Search Drift Warning | Warning Propagation | **{bitemporal_results['warning_emission_rate_pct']:.1f}%** | 100% | PASS |",
+            "",
+            "> [!NOTE]",
+            "> When an AST node's content hash drifts, all facts connected via `fact_entity_links` are flagged (`is_stale = 1`),",
+            "> their stability $R$ is reset, forgetting speed is tripled ($\\\\lambda \\\\times 3$), and search results carry the `stale_code_drift` warning.",
+            "",
+            "---",
+            "",
+            "## 4. Experiment 3: Latency & Scalability Profile",
+            "",
+            f"Measurements taken over `{perf_results['iterations']}` iterations on `{scale}` dataset ({dataset_stats['facts']:,} facts).",
+            "",
+            "| Operation | p50 (ms) | p95 (ms) | p99 (ms) | Mean (ms) | Throughput (ops/sec) |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
 
     lat = perf_results["latencies"]
     labels = {
@@ -143,13 +147,15 @@ def generate_markdown_report(
 
     # Multi-scale comparative table if available
     if multi_scale_results:
-        lines.extend([
-            "",
-            "### Multi-Scale Scalability Comparison (p50 / p95 in ms)",
-            "",
-            "| Operation | Small (500 facts) | Medium (5,000 facts) | Large (20,000 facts) |",
-            "|---|---|---|---|",
-        ])
+        lines.extend(
+            [
+                "",
+                "### Multi-Scale Scalability Comparison (p50 / p95 in ms)",
+                "",
+                "| Operation | Small (500 facts) | Medium (5,000 facts) | Large (20,000 facts) |",
+                "|---|---|---|---|",
+            ]
+        )
         s_lat = multi_scale_results.get("small", {}).get("latencies", {})
         m_lat = multi_scale_results.get("medium", {}).get("latencies", {})
         l_lat = multi_scale_results.get("large", {}).get("latencies", {})
@@ -160,35 +166,39 @@ def generate_markdown_report(
             l_str = f"{l_lat[key]['p50']:.3f} / {l_lat[key]['p95']:.3f}" if key in l_lat else "N/A"
             lines.append(f"| {label} | {s_str} | {m_str} | {l_str} |")
 
-    lines.extend([
-        "",
-        "### AST Project Scanning Throughput",
-        "",
-        f"- **Full Initial Scan (10 modules):** `{lat.get('scan_full_ms', 0):.2f} ms`",
-        f"- **Incremental Diff Scan (Cache Hit):** `{lat.get('scan_incremental_ms', 0):.2f} ms`",
-        f"- **Cache Speedup Factor:** **`{lat.get('scan_speedup', 1.0):.1f}x` faster**",
-        "",
-        "---",
-        "",
-        "## 5. Hyperparameter Tuning & Recommendations",
-        "",
-        "Based on the empirical grid evaluation across the query challenge groups, the following hyperparameter values are optimal:",
-        "",
-        "| Hyperparameter | Value | Rationale |",
-        "|---|---|---|",
-        "| **$k_{\\text{RRF}}$ (Smoothing Constant)** | **60** | Prevents high-ranking outliers from single channels from completely dominating fusion while ensuring consensus across channels reliably floats to top 1-3. |",
-        "| **$\\lambda$ (Base Decay Rate)** | **0.01 / tick** | Provides a healthy half-life for Working Tier memories while preventing premature forgetting during sustained coding sessions. |",
-        "| **$\\lambda_{\\text{stale}}$ (Drift Penalty Rate)** | **$3 \\times \\lambda = 0.03$** | Aggressively accelerates memory decay for facts anchored to mutated code signatures until reaffirmed by the agent or developer. |",
-        "| **$\\alpha$ (Spaced Repetition Growth)** | **0.50** | Yields multiplicative stability scaling $R = R_0 \\cdot (1 + 0.5)^n$. At $n=3$, half-life is expanded by $3.375\\times$. |",
-        "| **Channel Weights ($w_m$)** | **Equal (1.0)** | Equal weighting with RRF rank-based blending outperforms fixed score weights because vector cosine similarities and BM25 scores have fundamentally different non-comparable distributions. |",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "### AST Project Scanning Throughput",
+            "",
+            f"- **Full Initial Scan (10 modules):** `{lat.get('scan_full_ms', 0):.2f} ms`",
+            f"- **Incremental Diff Scan (Cache Hit):** `{lat.get('scan_incremental_ms', 0):.2f} ms`",
+            f"- **Cache Speedup Factor:** **`{lat.get('scan_speedup', 1.0):.1f}x` faster**",
+            "",
+            "---",
+            "",
+            "## 5. Hyperparameter Tuning & Recommendations",
+            "",
+            "Based on the empirical grid evaluation across the query challenge groups, the following hyperparameter values are optimal:",
+            "",
+            "| Hyperparameter | Value | Rationale |",
+            "|---|---|---|",
+            "| **$k_{\\text{RRF}}$ (Smoothing Constant)** | **60** | Prevents high-ranking outliers from single channels from completely dominating fusion while ensuring consensus across channels reliably floats to top 1-3. |",
+            "| **$\\lambda$ (Base Decay Rate)** | **0.01 / tick** | Provides a healthy half-life for Working Tier memories while preventing premature forgetting during sustained coding sessions. |",
+            "| **$\\lambda_{\\text{stale}}$ (Drift Penalty Rate)** | **$3 \\times \\lambda = 0.03$** | Aggressively accelerates memory decay for facts anchored to mutated code signatures until reaffirmed by the agent or developer. |",
+            "| **$\\alpha$ (Spaced Repetition Growth)** | **0.50** | Yields multiplicative stability scaling $R = R_0 \\cdot (1 + 0.5)^n$. At $n=3$, half-life is expanded by $3.375\\times$. |",
+            "| **Channel Weights ($w_m$)** | **Equal (1.0)** | Equal weighting with RRF rank-based blending outperforms fixed score weights because vector cosine similarities and BM25 scores have fundamentally different non-comparable distributions. |",
+            "",
+        ]
+    )
 
     return "\n".join(lines)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run Mnemo benchmarks and generate empirical report.")
+    parser = argparse.ArgumentParser(
+        description="Run Mnemo benchmarks and generate empirical report."
+    )
     parser.add_argument(
         "--scale",
         choices=["small", "medium", "large"],
@@ -234,20 +244,30 @@ def main() -> None:
     ablation_res = run_ablation_study(dataset)
     for _cfg_key, cfg_res in ablation_res.items():
         ov = cfg_res["overall"]
-        print(f"  • {cfg_res['label']:<40} MRR: {ov['mrr']:.3f} | Hit@1: {ov['hit@1']:.3f} | NDCG@5: {ov['ndcg@5']:.3f}")
+        print(
+            f"  • {cfg_res['label']:<40} MRR: {ov['mrr']:.3f} | Hit@1: {ov['hit@1']:.3f} | NDCG@5: {ov['ndcg@5']:.3f}"
+        )
 
     # 3. Experiment 2: Bitemporal Accuracy & AST Code Drift
     print("\n[3/4] Running Experiment 2: Bitemporal & Code Drift Verification...")
     bitemporal_res = run_bitemporal_and_drift_benchmark(dataset)
-    print(f"  ✓ Bitemporal Reconstruction Accuracy: {bitemporal_res['bitemporal_accuracy_pct']:.1f}%")
-    print(f"  ✓ AST Stale Code Drift Detection:    {bitemporal_res['stale_detection_rate_pct']:.1f}%")
-    print(f"  ✓ Search Stale Warning Emission:     {bitemporal_res['warning_emission_rate_pct']:.1f}%")
+    print(
+        f"  ✓ Bitemporal Reconstruction Accuracy: {bitemporal_res['bitemporal_accuracy_pct']:.1f}%"
+    )
+    print(
+        f"  ✓ AST Stale Code Drift Detection:    {bitemporal_res['stale_detection_rate_pct']:.1f}%"
+    )
+    print(
+        f"  ✓ Search Stale Warning Emission:     {bitemporal_res['warning_emission_rate_pct']:.1f}%"
+    )
 
     # 4. Experiment 3: Latency & Scalability Profiling
     print(f"\n[4/4] Running Experiment 3: Latency Profiling ({args.iterations} iterations)...")
     perf_res = run_performance_benchmarks(dataset, iterations=args.iterations)
     full_search_lat = perf_res["latencies"]["full_hybrid_search"]
-    print(f"  ✓ Full Hybrid Search Latency (p50): {full_search_lat['p50']:.3f} ms (p95: {full_search_lat['p95']:.3f} ms)")
+    print(
+        f"  ✓ Full Hybrid Search Latency (p50): {full_search_lat['p50']:.3f} ms (p95: {full_search_lat['p95']:.3f} ms)"
+    )
     print(f"  ✓ Hybrid Search Throughput:         {full_search_lat['ops_sec']:,.1f} ops/sec")
 
     multi_scale_results = None

@@ -690,7 +690,7 @@ def generate_dataset(
 
         # Additional background noise facts to match requested scale
         current_facts = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
-        needed_facts = (500 if scale == "small" else (5000 if scale == "medium" else 20000))
+        needed_facts = 500 if scale == "small" else (5000 if scale == "medium" else 20000)
         remaining = max(0, needed_facts - current_facts)
 
         if remaining > 0:
@@ -701,7 +701,28 @@ def generate_dataset(
                 cat = "telemetry"
                 now_ts = now - (i * 60)
                 bulk_inserts.append(
-                    (fid, txt, cat, 0.5, 0, "archived" if i % 3 == 0 else "working", now_ts, 0, 0, now_ts, None, now_ts, None, None, "{}", 0, "agent", None, 0.9, "")
+                    (
+                        fid,
+                        txt,
+                        cat,
+                        0.5,
+                        0,
+                        "archived" if i % 3 == 0 else "working",
+                        now_ts,
+                        0,
+                        0,
+                        now_ts,
+                        None,
+                        now_ts,
+                        None,
+                        None,
+                        "{}",
+                        0,
+                        "agent",
+                        None,
+                        0.9,
+                        "",
+                    )
                 )
             conn.executemany(
                 "INSERT INTO facts "

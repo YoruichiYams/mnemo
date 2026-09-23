@@ -23,7 +23,9 @@ def run_bitemporal_and_drift_benchmark(dataset: BenchmarkDataset) -> dict[str, A
     graph = GraphStore()
     retriever = HybridRetriever(vs, fts, graph)
 
-    bitemporal_queries = [q for q in dataset.queries if q.group == "bitemporal" and q.as_of is not None]
+    bitemporal_queries = [
+        q for q in dataset.queries if q.group == "bitemporal" and q.as_of is not None
+    ]
     drift_queries = [q for q in dataset.queries if q.expected_stale]
 
     correct_reconstructions = 0
@@ -82,7 +84,9 @@ def run_bitemporal_and_drift_benchmark(dataset: BenchmarkDataset) -> dict[str, A
             )
 
         # Check raw database state for drift
-        stale_rows_count = conn.execute("SELECT COUNT(*) FROM facts WHERE is_stale = 1").fetchone()[0]
+        stale_rows_count = conn.execute("SELECT COUNT(*) FROM facts WHERE is_stale = 1").fetchone()[
+            0
+        ]
 
     bitemporal_accuracy = (
         round((correct_reconstructions / total_bitemporal) * 100, 2)
@@ -90,14 +94,10 @@ def run_bitemporal_and_drift_benchmark(dataset: BenchmarkDataset) -> dict[str, A
         else 100.0
     )
     stale_detection_rate = (
-        round((stale_detected / total_drift) * 100, 2)
-        if total_drift > 0
-        else 100.0
+        round((stale_detected / total_drift) * 100, 2) if total_drift > 0 else 100.0
     )
     warning_emission_rate = (
-        round((warning_emitted / total_drift) * 100, 2)
-        if total_drift > 0
-        else 100.0
+        round((warning_emitted / total_drift) * 100, 2) if total_drift > 0 else 100.0
     )
 
     return {

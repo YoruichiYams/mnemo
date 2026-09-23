@@ -110,4 +110,3 @@ def calculate_salience(
 def salience_to_tier(salience: float) -> MemoryTier:
     """Map a numeric salience to its corresponding ``MemoryTier``."""
     return MemoryTier.from_salience(salience)
-

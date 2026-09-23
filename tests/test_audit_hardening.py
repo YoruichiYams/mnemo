@@ -141,7 +141,9 @@ class TestScannerPathTraversalAndResilience:
 
             # Write a valid file
             valid_file = test_dir / "good_module.py"
-            valid_file.write_text("class ValidService:\n    def run(self): pass\n", encoding="utf-8")
+            valid_file.write_text(
+                "class ValidService:\n    def run(self): pass\n", encoding="utf-8"
+            )
 
             db = Database(":memory:")
             scanner = ProjectScanner(root_path=base)
@@ -151,6 +153,7 @@ class TestScannerPathTraversalAndResilience:
                 assert res["entities_added"] >= 1
         finally:
             import shutil
+
             shutil.rmtree(test_dir, ignore_errors=True)
 
 

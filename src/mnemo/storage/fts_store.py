@@ -103,7 +103,11 @@ class FTSStore:
         """
         from mnemo.storage.state import parse_as_of
 
-        target_time = parse_as_of(as_of) if as_of is not None else (valid_at if valid_at is not None else None)
+        target_time = (
+            parse_as_of(as_of)
+            if as_of is not None
+            else (valid_at if valid_at is not None else None)
+        )
         sanitized = _sanitize_fts_query(query)
         if sanitized == '""':
             return []
@@ -163,7 +167,11 @@ class FTSStore:
     ) -> list[tuple[str, float]]:
         from mnemo.storage.state import parse_as_of
 
-        target_time = parse_as_of(as_of) if as_of is not None else (valid_at if valid_at is not None else None)
+        target_time = (
+            parse_as_of(as_of)
+            if as_of is not None
+            else (valid_at if valid_at is not None else None)
+        )
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
 

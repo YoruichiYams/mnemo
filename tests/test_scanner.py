@@ -14,7 +14,9 @@ class TestProjectScanner:
     """Validate AST parsing, diff caching, and entity linking."""
 
     @pytest.fixture(autouse=True)
-    def _chdir_to_tmp_path(self, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _chdir_to_tmp_path(
+        self, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         if "tmp_path" in request.fixturenames:
             tmp = request.getfixturevalue("tmp_path")
             monkeypatch.chdir(tmp)

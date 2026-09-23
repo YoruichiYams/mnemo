@@ -147,11 +147,14 @@ def sync_embedding_metadata(
     ).fetchone()
     if row is None:
         conn.execute(
-            "INSERT INTO project_state (id, embedding_model, embedding_dimension) "
-            "VALUES (1, ?, ?)",
+            "INSERT INTO project_state (id, embedding_model, embedding_dimension) VALUES (1, ?, ?)",
             (model_name, dimension),
         )
-    elif force or not row["embedding_model"] or row["embedding_model"] in ("deterministic-hash-64", "unknown"):
+    elif (
+        force
+        or not row["embedding_model"]
+        or row["embedding_model"] in ("deterministic-hash-64", "unknown")
+    ):
         conn.execute(
             "UPDATE project_state SET embedding_model = ?, embedding_dimension = ? WHERE id = 1",
             (model_name, dimension),
@@ -278,7 +281,11 @@ class VectorStore:
         """
         from mnemo.storage.state import parse_as_of
 
-        target_time = parse_as_of(as_of) if as_of is not None else (valid_at if valid_at is not None else None)
+        target_time = (
+            parse_as_of(as_of)
+            if as_of is not None
+            else (valid_at if valid_at is not None else None)
+        )
         query_vec = self.embed_text(query)
 
         if target_time is not None:
@@ -290,7 +297,9 @@ class VectorStore:
                   AND ingest_start <= ?
                   AND (ingest_end   IS NULL OR ingest_end > ?);
             """
-            rows = conn.execute(sql, (target_time, target_time, target_time, target_time)).fetchall()
+            rows = conn.execute(
+                sql, (target_time, target_time, target_time, target_time)
+            ).fetchall()
         else:
             now = time.time()
             sql = """

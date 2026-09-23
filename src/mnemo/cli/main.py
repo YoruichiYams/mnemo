@@ -570,9 +570,7 @@ def doctor(
             f"  [dim]embedding model[/dim] [yellow]{db_model} (current: {curr_model}) - reindex recommended![/yellow]"
         )
     else:
-        console.print(
-            f"  [dim]embedding model[/dim] [green]{db_model or curr_model}[/green]"
-        )
+        console.print(f"  [dim]embedding model[/dim] [green]{db_model or curr_model}[/green]")
 
     counts = health.get("table_counts", {})
     console.print(f"  [dim]active facts[/dim]    {counts.get('facts', 0)}")

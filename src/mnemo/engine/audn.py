@@ -76,12 +76,19 @@ class AUDNClassifier:
                         or ex_conf >= 0.9
                         or ex_tier == "core"
                     )
-                    is_untrusted = (source_type in ("agent", "tool_output")) or (confidence < ex_conf)
-                    if is_protected and is_untrusted and force_op in (
-                        AUDNOperation.UPDATE,
-                        AUDNOperation.CORRECT,
-                        AUDNOperation.DELETE,
-                        AUDNOperation.PURGE,
+                    is_untrusted = (source_type in ("agent", "tool_output")) or (
+                        confidence < ex_conf
+                    )
+                    if (
+                        is_protected
+                        and is_untrusted
+                        and force_op
+                        in (
+                            AUDNOperation.UPDATE,
+                            AUDNOperation.CORRECT,
+                            AUDNOperation.DELETE,
+                            AUDNOperation.PURGE,
+                        )
                     ):
                         return AUDNOperation.ADD, None
             return force_op, target
@@ -293,24 +300,15 @@ class AUDNClassifier:
         # 2. Advance activity tick
         current_tick = increment_activity_tick(conn)
 
-        valid_start = (
-            float(old_row["valid_start"]) if old_row["valid_start"] is not None else now
-        )
-        valid_end = (
-            float(old_row["valid_end"]) if old_row["valid_end"] is not None else None
-        )
-        tier_val = (
-            old_row["tier"] if old_row["tier"] else MemoryTier.WORKING.value
-        )
-        salience = (
-            float(old_row["salience"]) if old_row["salience"] is not None else 1.0
-        )
-        access_count = (
-            int(old_row["access_count"]) if old_row["access_count"] is not None else 0
-        )
+        valid_start = float(old_row["valid_start"]) if old_row["valid_start"] is not None else now
+        valid_end = float(old_row["valid_end"]) if old_row["valid_end"] is not None else None
+        tier_val = old_row["tier"] if old_row["tier"] else MemoryTier.WORKING.value
+        salience = float(old_row["salience"]) if old_row["salience"] is not None else 1.0
+        access_count = int(old_row["access_count"]) if old_row["access_count"] is not None else 0
         reinforcement_count = (
             int(old_row["reinforcement_count"])
-            if "reinforcement_count" in old_row.keys() and old_row["reinforcement_count"] is not None
+            if "reinforcement_count" in old_row.keys()
+            and old_row["reinforcement_count"] is not None
             else 0
         )
         meta_json = (
@@ -336,9 +334,7 @@ class AUDNClassifier:
             if "source_type" in old_row.keys() and old_row["source_type"]
             else "agent"
         )
-        old_source_ref = (
-            old_row["source_ref"] if "source_ref" in old_row.keys() else None
-        )
+        old_source_ref = old_row["source_ref"] if "source_ref" in old_row.keys() else None
         old_confidence = (
             float(old_row["confidence"])
             if "confidence" in old_row.keys() and old_row["confidence"] is not None
@@ -349,7 +345,9 @@ class AUDNClassifier:
         resolved_ref = source_ref if source_ref is not None else old_source_ref
         resolved_conf = confidence if confidence != 1.0 else old_confidence
 
-        if fact_tier == MemoryTier.CORE and (resolved_source == "tool_output" or resolved_conf < 0.8):
+        if fact_tier == MemoryTier.CORE and (
+            resolved_source == "tool_output" or resolved_conf < 0.8
+        ):
             fact_tier = MemoryTier.WORKING
 
         from mnemo.storage.fts_store import extract_search_tokens
@@ -358,7 +356,8 @@ class AUDNClassifier:
 
         fact = Fact(
             text=new_text,
-            category=category or (old_row["category"] if "category" in old_row.keys() else "general"),
+            category=category
+            or (old_row["category"] if "category" in old_row.keys() else "general"),
             salience=salience,
             access_count=access_count,
             tier=fact_tier,
@@ -442,9 +441,7 @@ class AUDNClassifier:
         row = conn.execute("SELECT text FROM facts WHERE id = ?", (fact_id,)).fetchone()
         fact_text = row["text"] if row is not None else ""
         fact_hash = (
-            hashlib.sha256(fact_text.encode("utf-8")).hexdigest()
-            if fact_text
-            else "unknown"
+            hashlib.sha256(fact_text.encode("utf-8")).hexdigest() if fact_text else "unknown"
         )
 
         now = time.time()

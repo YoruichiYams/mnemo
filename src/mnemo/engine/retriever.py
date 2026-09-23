@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from typing import Literal, cast
 
 from mnemo.core.models import Fact, MemoryTier, SearchResult
 from mnemo.core.rrf import reciprocal_rank_fusion
@@ -56,7 +57,6 @@ def _load_fact_by_id(fact_id: str, conn: sqlite3.Connection) -> Fact | None:
         metadata=meta,
         is_stale=bool(row["is_stale"]) if "is_stale" in row.keys() and row["is_stale"] else False,
     )
-
 
 
 class HybridRetriever:
@@ -170,11 +170,18 @@ class HybridRetriever:
                     "Факт находится в архиве из-за низкой активности"
                 )
 
-            ch_val = "fts5" if channels[0] == "fts" else channels[0]
+            ch_val: Literal["vector", "fts5", "graph", "rrf"] = "rrf"
+            if len(channels) == 1:
+                first = channels[0]
+                if first == "fts":
+                    ch_val = "fts5"
+                elif first in ("vector", "fts5", "graph"):
+                    ch_val = cast(Literal["vector", "fts5", "graph", "rrf"], first)
+
             search_res = SearchResult(
                 fact=fact,
                 score=round(combined, 8),
-                channel=ch_val if len(channels) == 1 else "rrf",
+                channel=ch_val,
             )
 
             if min_tier is not None and tier_order.get(fact.tier, 0) < tier_order.get(min_tier, 0):

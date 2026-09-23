@@ -64,6 +64,7 @@ packages = ["src/mnemo"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [".gemini", ".agents", "dist", "build"]
 
 [tool.ruff.lint]
 select = [
@@ -84,7 +85,6 @@ ignore = [
 known-first-party = ["mnemo"]
 
 [tool.mypy]
-python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true

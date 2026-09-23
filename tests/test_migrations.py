@@ -72,4 +72,3 @@ class TestMigrations:
         assert "file_scan_cache" in health["table_counts"]
         assert "fact_entity_links" in health["table_counts"]
         assert "project_state" in health["table_counts"]
-

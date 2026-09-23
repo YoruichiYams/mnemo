@@ -244,9 +244,7 @@ class Database:
             finally:
                 conn.close()
 
-    def execute_with_retry(
-        self, fn: Callable[[sqlite3.Connection], T], max_retries: int = 5
-    ) -> T:
+    def execute_with_retry(self, fn: Callable[[sqlite3.Connection], T], max_retries: int = 5) -> T:
         """Execute a callback in a session with full transaction retry on database lock."""
         for attempt in range(max_retries):
             try:
@@ -259,6 +257,7 @@ class Database:
                     time.sleep(delay)
                     continue
                 raise
+        raise RuntimeError("Max retries exceeded")
 
     def check_integrity(self) -> dict[str, Any]:
         """Run self-diagnostic checks on database health and schema integrity."""

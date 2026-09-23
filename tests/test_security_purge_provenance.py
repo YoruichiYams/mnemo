@@ -56,9 +56,7 @@ class TestProvenanceAndPoisoningProtection:
             assert row["source_ref"] == "a1b2c3d"
             assert row["confidence"] == 0.95
 
-    def test_memory_poisoning_prevents_untrusted_overwrite(
-        self, in_memory_db: Database
-    ) -> None:
+    def test_memory_poisoning_prevents_untrusted_overwrite(self, in_memory_db: Database) -> None:
         """Low-confidence or tool_output facts cannot overwrite protected facts."""
         vs = VectorStore(create_embedder())
         audn = AUDNClassifier(vs)
@@ -91,9 +89,7 @@ class TestProvenanceAndPoisoningProtection:
             assert row1 is not None
             assert row1["valid_end"] is None
 
-    def test_core_tier_protection_clamps_untrusted_facts(
-        self, in_memory_db: Database
-    ) -> None:
+    def test_core_tier_protection_clamps_untrusted_facts(self, in_memory_db: Database) -> None:
         """Facts with confidence < 0.8 or source_type == 'tool_output' cannot enter Core Tier."""
         vs = VectorStore(create_embedder())
         audn = AUDNClassifier(vs)
@@ -131,14 +127,14 @@ class TestProvenanceAndPoisoningProtection:
             tm.decay_all(conn, now=time.time())
 
             # Neither should have entered Core Tier
-            row_tool = conn.execute("SELECT tier FROM facts WHERE id = ?", (fact_tool.id,)).fetchone()
+            row_tool = conn.execute(
+                "SELECT tier FROM facts WHERE id = ?", (fact_tool.id,)
+            ).fetchone()
             row_low = conn.execute("SELECT tier FROM facts WHERE id = ?", (fact_low.id,)).fetchone()
             assert row_tool["tier"] == MemoryTier.WORKING.value
             assert row_low["tier"] == MemoryTier.WORKING.value
 
-    def test_untrusted_pinned_fact_is_not_exempt_from_decay(
-        self, in_memory_db: Database
-    ) -> None:
+    def test_untrusted_pinned_fact_is_not_exempt_from_decay(self, in_memory_db: Database) -> None:
         """Pinned facts with low confidence or tool_output are not exempt from decay."""
         vs = VectorStore(create_embedder())
         audn = AUDNClassifier(vs)
@@ -187,18 +183,44 @@ class TestPhysicalPurgeRedaction:
             )
 
             # Verify fact exists in FTS and table
-            assert conn.execute("SELECT COUNT(*) FROM facts WHERE id = ?", (fact.id,)).fetchone()[0] == 1
-            assert conn.execute("SELECT COUNT(*) FROM fact_entity_links WHERE fact_id = ?", (fact.id,)).fetchone()[0] == 1
-            assert conn.execute("SELECT COUNT(*) FROM facts_fts WHERE id = ?", (fact.id,)).fetchone()[0] == 1
+            assert (
+                conn.execute("SELECT COUNT(*) FROM facts WHERE id = ?", (fact.id,)).fetchone()[0]
+                == 1
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM fact_entity_links WHERE fact_id = ?", (fact.id,)
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                conn.execute("SELECT COUNT(*) FROM facts_fts WHERE id = ?", (fact.id,)).fetchone()[
+                    0
+                ]
+                == 1
+            )
 
             # 2. Execute physical purge
             purged_id = audn.execute_purge(fact.id, conn, reason="compromised_api_key")
             assert purged_id == fact.id
 
             # 3. Verify zero traces in facts, links, and FTS
-            assert conn.execute("SELECT COUNT(*) FROM facts WHERE id = ?", (fact.id,)).fetchone()[0] == 0
-            assert conn.execute("SELECT COUNT(*) FROM fact_entity_links WHERE fact_id = ?", (fact.id,)).fetchone()[0] == 0
-            assert conn.execute("SELECT COUNT(*) FROM facts_fts WHERE id = ?", (fact.id,)).fetchone()[0] == 0
+            assert (
+                conn.execute("SELECT COUNT(*) FROM facts WHERE id = ?", (fact.id,)).fetchone()[0]
+                == 0
+            )
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM fact_entity_links WHERE fact_id = ?", (fact.id,)
+                ).fetchone()[0]
+                == 0
+            )
+            assert (
+                conn.execute("SELECT COUNT(*) FROM facts_fts WHERE id = ?", (fact.id,)).fetchone()[
+                    0
+                ]
+                == 0
+            )
 
             # 4. Verify tombstone created with SHA256, without original text
             tomb = conn.execute(
@@ -213,12 +235,15 @@ class TestPhysicalPurgeRedaction:
     def test_mcp_mnemo_purge_tool(self) -> None:
         """FastMCP mnemo_purge tool is forbidden and returns security warning."""
         unique_secret = f"secret_{uuid.uuid4().hex}"
-        rem_res = mnemo_remember(f"Sensitive password {unique_secret}", category="sec", force_op="add")
+        rem_res = mnemo_remember(
+            f"Sensitive password {unique_secret}", category="sec", force_op="add"
+        )
         assert "[ADD]" in rem_res
 
         # Retrieve ID
         search_res = mnemo_search(unique_secret)
         import re
+
         match = re.search(r"i:([a-f0-9-]+)", search_res)
         assert match is not None
         fact_id = match.group(1)
@@ -311,7 +336,9 @@ class TestEmbeddingMetadataAndDoctor:
         # Extract ID
         db = Database(db_path=db_file)
         with db.session() as conn:
-            row = conn.execute("SELECT id FROM facts WHERE text LIKE '%db_password_12345%'").fetchone()
+            row = conn.execute(
+                "SELECT id FROM facts WHERE text LIKE '%db_password_12345%'"
+            ).fetchone()
             assert row is not None
             fact_id = row["id"]
         db.close()
