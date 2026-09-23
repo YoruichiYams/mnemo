@@ -14,10 +14,15 @@ Usage::
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Generator
+import threading
+import time
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, TypeVar
+
+T = TypeVar("T")
+_BUSY_DELAYS: Final[tuple[float, ...]] = (0.05, 0.1, 0.2, 0.4, 0.8)
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -66,10 +71,30 @@ def create_connection(db_path: str | Path) -> sqlite3.Connection:
     if not is_memory:
         Path(path_str).parent.mkdir(parents=True, exist_ok=True)
 
+    for i, delay in enumerate(_BUSY_DELAYS):
+        try:
+            conn = sqlite3.connect(
+                path_str,
+                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+                timeout=10.0,
+                check_same_thread=False,
+            )
+            conn.row_factory = sqlite3.Row
+            _apply_pragmas(conn, wal=not is_memory)
+            return conn
+        except sqlite3.OperationalError as e:
+            err = str(e).lower()
+            if ("locked" in err or "busy" in err) and i < len(_BUSY_DELAYS) - 1:
+                time.sleep(delay)
+                continue
+            raise
+
+    # Fallback attempt
     conn = sqlite3.connect(
         path_str,
         detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
         timeout=10.0,
+        check_same_thread=False,
     )
     conn.row_factory = sqlite3.Row
     _apply_pragmas(conn, wal=not is_memory)
@@ -134,6 +159,7 @@ class Database:
         # For in-memory DBs we keep a single persistent connection so the
         # schema (and data) survive across ``session()`` calls.
         self._persistent_conn: sqlite3.Connection | None = None
+        self._lock = threading.Lock()
 
         if self._is_memory:
             self._persistent_conn = create_connection(":memory:")
@@ -152,32 +178,87 @@ class Database:
             return self._persistent_conn
         return create_connection(self.db_path)
 
+    @staticmethod
+    def _commit_with_retry(conn: sqlite3.Connection) -> None:
+        """Commit active transaction with exponential backoff on busy/locked errors."""
+        for i, delay in enumerate(_BUSY_DELAYS):
+            try:
+                conn.commit()
+                return
+            except sqlite3.OperationalError as e:
+                err = str(e).lower()
+                if ("locked" in err or "busy" in err) and i < len(_BUSY_DELAYS) - 1:
+                    time.sleep(delay)
+                    continue
+                raise
+
+    @staticmethod
+    def _begin_immediate_with_retry(conn: sqlite3.Connection) -> None:
+        """Begin immediate transaction with exponential backoff on busy/locked errors."""
+        for i, delay in enumerate(_BUSY_DELAYS):
+            try:
+                conn.execute("BEGIN IMMEDIATE;")
+                return
+            except sqlite3.OperationalError as e:
+                err = str(e).lower()
+                if ("locked" in err or "busy" in err) and i < len(_BUSY_DELAYS) - 1:
+                    time.sleep(delay)
+                    continue
+                raise
+        conn.execute("BEGIN IMMEDIATE;")
+
     @contextmanager
-    def session(self) -> Generator[sqlite3.Connection, None, None]:
+    def session(self, *, readonly: bool = False) -> Generator[sqlite3.Connection, None, None]:
         """Context manager: yields a connection, commits on success,
         rolls back on exception.
 
-        For ``:memory:`` databases the persistent connection is reused.
-        For file-backed databases a fresh connection is opened and closed.
+        For ``:memory:`` databases the persistent connection is reused under a thread lock.
+        For file-backed databases a fresh connection is opened. Writing sessions are synchronized
+        via ``BEGIN IMMEDIATE`` with exponential backoff to eliminate SHARED->RESERVED deadlocks.
+        Read-only sessions skip transaction acquisition, allowing concurrent non-blocking reads.
         """
         if self._is_memory:
-            conn = self.get_connection()
-            try:
-                yield conn
-                conn.commit()
-            except BaseException:
-                conn.rollback()
-                raise
+            with self._lock:
+                conn = self.get_connection()
+                try:
+                    yield conn
+                    if not readonly:
+                        self._commit_with_retry(conn)
+                except BaseException:
+                    conn.rollback()
+                    raise
         else:
             conn = create_connection(self.db_path)
             try:
+                if not readonly:
+                    self._begin_immediate_with_retry(conn)
                 yield conn
-                conn.commit()
+                if not readonly:
+                    self._commit_with_retry(conn)
             except BaseException:
-                conn.rollback()
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 raise
             finally:
                 conn.close()
+
+    def execute_with_retry(
+        self, fn: Callable[[sqlite3.Connection], T], max_retries: int = 5
+    ) -> T:
+        """Execute a callback in a session with full transaction retry on database lock."""
+        for attempt in range(max_retries):
+            try:
+                with self.session() as conn:
+                    return fn(conn)
+            except sqlite3.OperationalError as e:
+                err = str(e).lower()
+                if ("locked" in err or "busy" in err) and attempt < max_retries - 1:
+                    delay = _BUSY_DELAYS[min(attempt, len(_BUSY_DELAYS) - 1)]
+                    time.sleep(delay)
+                    continue
+                raise
 
     def check_integrity(self) -> dict[str, Any]:
         """Run self-diagnostic checks on database health and schema integrity."""

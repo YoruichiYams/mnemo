@@ -4,12 +4,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from mnemo.engine.scanner import ProjectScanner, link_fact_to_entities
 from mnemo.storage.connection import Database
 
 
 class TestProjectScanner:
     """Validate AST parsing, diff caching, and entity linking."""
+
+    @pytest.fixture(autouse=True)
+    def _chdir_to_tmp_path(self, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+        if "tmp_path" in request.fixturenames:
+            tmp = request.getfixturevalue("tmp_path")
+            monkeypatch.chdir(tmp)
 
     def test_scan_python_files(self, tmp_path: Path) -> None:
         """Scanner correctly extracts modules, classes, and imports from python files."""
@@ -108,13 +116,13 @@ class AuthService(BaseModel):
             )
             assert eid in linked
 
-            # Check relation created
-            rel = conn.execute(
-                "SELECT relation_type FROM relations WHERE source_id = ? AND target_id = ?",
-                (eid, fact_id),
+            # Check link created in fact_entity_links
+            link = conn.execute(
+                "SELECT entity_hash_at_link FROM fact_entity_links WHERE fact_id = ? AND entity_id = ?",
+                (fact_id, eid),
             ).fetchone()
-            assert rel is not None
-            assert rel["relation_type"] == "MENTIONS"
+            assert link is not None
+            assert len(link["entity_hash_at_link"]) == 64
 
     def test_deleted_file_reconciliation(self, tmp_path: Path) -> None:
         """Deleted files are removed from cache and their entities are soft-deleted."""

@@ -70,3 +70,6 @@ class TestMigrations:
         assert health["fts_in_sync"] is True
         assert "facts" in health["table_counts"]
         assert "file_scan_cache" in health["table_counts"]
+        assert "fact_entity_links" in health["table_counts"]
+        assert "project_state" in health["table_counts"]
+

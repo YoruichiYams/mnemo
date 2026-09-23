@@ -28,6 +28,9 @@ class Embedder(Protocol):
     """Any object that can turn text into a float vector."""
 
     @property
+    def model_name(self) -> str: ...
+
+    @property
     def dimension(self) -> int: ...
 
     def embed(self, texts: list[str]) -> list[NDArray[np.float32]]: ...
@@ -51,6 +54,10 @@ class _HashEmbedder:
 
     def __init__(self, dimension: int = _FALLBACK_DIM) -> None:
         self._dim = dimension
+
+    @property
+    def model_name(self) -> str:
+        return f"deterministic-hash-{self._dim}"
 
     @property
     def dimension(self) -> int:
@@ -84,13 +91,21 @@ class _HashEmbedder:
 class _FastEmbedEmbedder:
     """Wrapper around ``fastembed.TextEmbedding``."""
 
-    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5") -> None:
+    def __init__(
+        self,
+        model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    ) -> None:
         from fastembed import TextEmbedding  # type: ignore[import-untyped]
 
+        self._model_name = model_name
         self._model = TextEmbedding(model_name=model_name)
         # Probe dimension
         probe = list(self._model.embed(["hello"]))
         self._dim = len(probe[0])
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     @property
     def dimension(self) -> int:
@@ -106,15 +121,55 @@ class _FastEmbedEmbedder:
 # ---------------------------------------------------------------------------
 
 
-def create_embedder() -> Embedder:
+def create_embedder(model_name: str | None = None) -> Embedder:
     """Return the best available embedding backend.
 
     Tries ``fastembed`` first; falls back to deterministic hash embedder.
     """
     try:
+        if model_name:
+            return _FastEmbedEmbedder(model_name=model_name)  # type: ignore[return-value]
         return _FastEmbedEmbedder()  # type: ignore[return-value]
     except Exception:
         return _HashEmbedder()  # type: ignore[return-value]
+
+
+def sync_embedding_metadata(
+    conn: sqlite3.Connection,
+    model_name: str,
+    dimension: int,
+    *,
+    force: bool = False,
+) -> None:
+    """Record current embedding model and dimension in project_state."""
+    row = conn.execute(
+        "SELECT embedding_model, embedding_dimension FROM project_state WHERE id = 1"
+    ).fetchone()
+    if row is None:
+        conn.execute(
+            "INSERT INTO project_state (id, embedding_model, embedding_dimension) "
+            "VALUES (1, ?, ?)",
+            (model_name, dimension),
+        )
+    elif force or not row["embedding_model"] or row["embedding_model"] in ("deterministic-hash-64", "unknown"):
+        conn.execute(
+            "UPDATE project_state SET embedding_model = ?, embedding_dimension = ? WHERE id = 1",
+            (model_name, dimension),
+        )
+
+
+def get_embedding_metadata(
+    conn: sqlite3.Connection,
+) -> tuple[str | None, int | None]:
+    """Retrieve recorded embedding model and dimension from project_state."""
+    row = conn.execute(
+        "SELECT embedding_model, embedding_dimension FROM project_state WHERE id = 1"
+    ).fetchone()
+    if row is None:
+        return None, None
+    m = row["embedding_model"]
+    d = row["embedding_dimension"]
+    return (str(m) if m is not None else None, int(d) if d is not None else None)
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +179,8 @@ def create_embedder() -> Embedder:
 
 def cosine_similarity(a: NDArray[np.float32], b: NDArray[np.float32]) -> float:
     """Compute cosine similarity between two vectors."""
+    if a.shape != b.shape:
+        return 0.0
     dot = float(np.dot(a, b))
     norm_a = float(np.linalg.norm(a))
     norm_b = float(np.linalg.norm(b))
@@ -165,6 +222,14 @@ class VectorStore:
     def dimension(self) -> int:
         return self._embedder.dimension
 
+    @property
+    def model_name(self) -> str:
+        return getattr(self._embedder, "model_name", "unknown")
+
+    def delete_embedding(self, conn: sqlite3.Connection, fact_id: str) -> None:
+        """Clear the embedding blob for a fact."""
+        conn.execute("UPDATE facts SET embedding_blob = NULL WHERE id = ?", (fact_id,))
+
     # -- write -------------------------------------------------------------
 
     def embed_text(self, text: str) -> NDArray[np.float32]:
@@ -197,6 +262,7 @@ class VectorStore:
         *,
         limit: int = 50,
         valid_at: float | None = None,
+        as_of: str | float | None = None,
     ) -> list[tuple[str, float]]:
         """Brute-force cosine-similarity search with bitemporal filter.
 
@@ -204,22 +270,37 @@ class VectorStore:
             query: Natural-language query to embed.
             conn: Active SQLite connection.
             limit: Maximum results.
-            valid_at: Point-in-time validity (epoch seconds). Defaults to *now*.
+            valid_at: Deprecated point-in-time validity (epoch seconds). Defaults to *now*.
+            as_of: Point-in-time for bitemporal point-in-time search (RFC3339 or epoch).
 
         Returns:
             ``[(fact_id, cosine_score), ...]`` ordered best-first.
         """
-        now = valid_at if valid_at is not None else time.time()
+        from mnemo.storage.state import parse_as_of
+
+        target_time = parse_as_of(as_of) if as_of is not None else (valid_at if valid_at is not None else None)
         query_vec = self.embed_text(query)
 
-        sql = """
-            SELECT id, embedding_blob FROM facts
-            WHERE embedding_blob IS NOT NULL
-              AND valid_start  <= ?
-              AND (valid_end   IS NULL OR valid_end  > ?)
-              AND ingest_end   IS NULL;
-        """
-        rows = conn.execute(sql, (now, now)).fetchall()
+        if target_time is not None:
+            sql = """
+                SELECT id, embedding_blob FROM facts
+                WHERE embedding_blob IS NOT NULL
+                  AND valid_start  <= ?
+                  AND (valid_end   IS NULL OR valid_end  > ?)
+                  AND ingest_start <= ?
+                  AND (ingest_end   IS NULL OR ingest_end > ?);
+            """
+            rows = conn.execute(sql, (target_time, target_time, target_time, target_time)).fetchall()
+        else:
+            now = time.time()
+            sql = """
+                SELECT id, embedding_blob FROM facts
+                WHERE embedding_blob IS NOT NULL
+                  AND valid_start  <= ?
+                  AND (valid_end   IS NULL OR valid_end  > ?)
+                  AND ingest_end   IS NULL;
+            """
+            rows = conn.execute(sql, (now, now)).fetchall()
 
         scored: list[tuple[str, float]] = []
         for row in rows:

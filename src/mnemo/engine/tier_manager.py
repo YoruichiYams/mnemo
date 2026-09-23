@@ -16,6 +16,7 @@ import time
 
 from mnemo.core.decay import calculate_salience, salience_to_tier
 from mnemo.core.models import DebtLedgerItem
+from mnemo.storage.state import get_activity_tick
 
 
 class TierManager:
@@ -34,12 +35,14 @@ class TierManager:
         conn: sqlite3.Connection,
         *,
         now: float | None = None,
+        current_tick: int | None = None,
     ) -> dict[str, int]:
         """Recompute salience for every active fact and update tiers.
 
         Args:
             conn: Active SQLite connection.
             now: Reference timestamp (epoch seconds). Defaults to ``time.time()``.
+            current_tick: Optional explicit current activity tick. Defaults to ``get_activity_tick(conn)``.
 
         Returns:
             ``{"processed": N, "migrated": M}`` counts.
@@ -47,9 +50,11 @@ class TierManager:
         import json
 
         current = now if now is not None else time.time()
+        cur_tick = current_tick if current_tick is not None else get_activity_tick(conn)
 
         rows = conn.execute(
-            "SELECT id, salience, access_count, last_accessed_at, tier, metadata_json "
+            "SELECT id, salience, access_count, last_accessed_at, last_accessed_tick, "
+            "reinforcement_count, tier, metadata_json, is_stale, source_type, confidence "
             "FROM facts "
             "WHERE ingest_end IS NULL AND (valid_end IS NULL OR valid_end > ?)",
             (current,),
@@ -67,25 +72,72 @@ class TierManager:
                 except Exception:
                     pass
 
-            if metadata.get("pinned") or metadata.get("permanent"):
-                continue  # explicitly pinned/permanent facts don't decay
+            source_type = (
+                str(row["source_type"])
+                if "source_type" in row.keys() and row["source_type"]
+                else "agent"
+            )
+            confidence = (
+                float(row["confidence"])
+                if "confidence" in row.keys() and row["confidence"] is not None
+                else 1.0
+            )
+            is_trusted = (source_type != "tool_output") and (confidence >= 0.8)
+
+            is_stale = bool(row["is_stale"]) if "is_stale" in row.keys() and row["is_stale"] else False
+            is_pinned = bool(metadata.get("pinned") or metadata.get("permanent"))
+
+            # Pinning protection: untrusted facts or drift-stale facts are not exempt from decay
+            if is_pinned and not is_stale and is_trusted:
+                continue
 
             last_accessed = (
                 float(row["last_accessed_at"]) if row["last_accessed_at"] is not None else current
             )
-            elapsed = max(0.0, current - last_accessed)
-            new_salience = calculate_salience(
-                s0=float(row["salience"]),
-                elapsed_seconds=elapsed,
-                access_count=int(row["access_count"]),
-                lambda_param=self._lambda,
-                gamma=self._gamma,
+            last_tick = (
+                int(row["last_accessed_tick"])
+                if "last_accessed_tick" in row.keys() and row["last_accessed_tick"] is not None
+                else 0
             )
+            reinf = (
+                0
+                if is_stale
+                else (
+                    int(row["reinforcement_count"])
+                    if "reinforcement_count" in row.keys() and row["reinforcement_count"] is not None
+                    else 0
+                )
+            )
+            lam = self._lambda * 3.0 if is_stale else self._lambda
+
+            # Activity ticks or fallback to elapsed seconds
+            if current_tick is not None or cur_tick > 0 or last_tick > 0:
+                delta_ticks = max(0, cur_tick - last_tick)
+                new_salience = calculate_salience(
+                    s0=float(row["salience"]),
+                    delta_ticks=delta_ticks,
+                    reinforcement_count=reinf,
+                    lambda_param=lam,
+                    access_count=int(row["access_count"]),
+                )
+            else:
+                elapsed = max(0.0, current - last_accessed)
+                new_salience = calculate_salience(
+                    s0=float(row["salience"]),
+                    elapsed_seconds=elapsed,
+                    access_count=int(row["access_count"]),
+                    lambda_param=lam,
+                    gamma=self._gamma,
+                )
+
             new_tier = salience_to_tier(new_salience).value
+            # Core Tier protection: untrusted facts cannot be in or enter Core Tier
+            if not is_trusted and new_tier == "core":
+                new_tier = "working"
 
             conn.execute(
-                "UPDATE facts SET salience = ?, tier = ?, last_accessed_at = ? WHERE id = ?",
-                (new_salience, new_tier, current, str(row["id"])),
+                "UPDATE facts SET salience = ?, tier = ?, last_accessed_at = ?, last_accessed_tick = ? WHERE id = ?",
+                (new_salience, new_tier, current, cur_tick, str(row["id"])),
             )
             processed += 1
             if new_tier != old_tier:
@@ -166,6 +218,36 @@ class TierManager:
                     ceiling="low",
                     trigger="orphaned_entity",
                     code_context=f"entity:{r['id']} name={r['name']}",
+                    created_at=current,
+                )
+            )
+
+        # 4. Stale facts due to AST drift / code changes
+        stale_facts = conn.execute(
+            """
+            SELECT f.id, fel.entity_id, e.name AS entity_name
+            FROM facts f
+            LEFT JOIN fact_entity_links fel ON fel.fact_id = f.id
+            LEFT JOIN entities e ON e.id = fel.entity_id
+            WHERE f.is_stale = 1
+              AND f.ingest_end IS NULL
+              AND (f.valid_end IS NULL OR f.valid_end > ?);
+            """,
+            (current,),
+        ).fetchall()
+
+        seen_stale_facts: set[str] = set()
+        for sf in stale_facts:
+            fid = str(sf["id"])
+            if fid in seen_stale_facts:
+                continue
+            seen_stale_facts.add(fid)
+            ent_name = sf["entity_name"] or "code_entity"
+            items.append(
+                DebtLedgerItem(
+                    ceiling="high",
+                    trigger="stale_fact_code_drift",
+                    code_context=f"fact:{fid} entity:{ent_name}",
                     created_at=current,
                 )
             )

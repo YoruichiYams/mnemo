@@ -5,6 +5,7 @@ Commands:
     remember      Store a new fact (AUDN pipeline).
     search        Hybrid 3-channel search.
     invalidate    Soft-delete a fact.
+    purge         Physically and permanently purge a fact (redaction).
     tier-decay    Recompute all salience scores and migrate tiers.
     debt          Detect and display knowledge debt.
     serve         Start the MCP stdio server.
@@ -73,6 +74,22 @@ def init(
 def remember(
     text: str = typer.Argument(..., help="Fact text to store."),
     category: str = typer.Option("general", "-c", "--category", help="Fact category."),
+    source_type: str = typer.Option(
+        "agent",
+        "-s",
+        "--source-type",
+        help="Fact source: agent, human_developer, git_commit, documentation, tool_output.",
+    ),
+    source_ref: str = typer.Option(
+        "",
+        "--source-ref",
+        help="Source reference (e.g. commit hash, URL, file path).",
+    ),
+    confidence: float = typer.Option(
+        1.0,
+        "--confidence",
+        help="Confidence score between 0.0 and 1.0.",
+    ),
     db_path: str = typer.Option("", "--db", help="Database path."),
 ) -> None:
     """Store a new fact through the AUDN pipeline."""
@@ -87,17 +104,40 @@ def remember(
     vs = VectorStore(create_embedder())
     audn = AUDNClassifier(vs)
 
+    ref = source_ref if source_ref else None
+
     with db.session() as conn:
-        op, existing_id = audn.classify(text, category, conn)
+        op, existing_id = audn.classify(
+            text,
+            category,
+            conn,
+            source_type=source_type,
+            confidence=confidence,
+        )
 
         if op == AUDNOperation.ADD:
-            fact = audn.execute_add(text, category, conn)
+            fact = audn.execute_add(
+                text,
+                category,
+                conn,
+                source_type=source_type,
+                source_ref=ref,
+                confidence=confidence,
+            )
             console.print("→ [bold]mnemo remember[/bold] [green]add[/green]")
             console.print(
                 f"  [dim]fact[/dim]  {encode_fact(fact.model_dump(exclude={'embedding'}))}"
             )
         elif op == AUDNOperation.UPDATE and existing_id:
-            fact = audn.execute_update(existing_id, text, category, conn)
+            fact = audn.execute_update(
+                existing_id,
+                text,
+                category,
+                conn,
+                source_type=source_type,
+                source_ref=ref,
+                confidence=confidence,
+            )
             console.print("→ [bold]mnemo remember[/bold] [yellow]update[/yellow]")
             console.print(f"  [dim]old[/dim]   {existing_id[:8]}..")
             console.print(
@@ -439,6 +479,39 @@ def visualize(
 
 
 # ---------------------------------------------------------------------------
+# purge
+# ---------------------------------------------------------------------------
+@app.command()
+def purge(
+    fact_id: str = typer.Argument(..., help="ID of the fact to permanently purge."),
+    reason: str = typer.Option(
+        "security_redaction",
+        "-r",
+        "--reason",
+        help="Administrative reason for purge tombstone.",
+    ),
+    db_path: str = typer.Option("", "--db", help="Database path."),
+) -> None:
+    """Physically and irrevocably purge a memory fact, links, vectors, and FTS entries."""
+    from mnemo.engine.audn import AUDNClassifier
+    from mnemo.storage.connection import Database, default_db_path
+    from mnemo.storage.vector_store import VectorStore, create_embedder
+
+    target = db_path if db_path else str(default_db_path())
+    db = Database(db_path=target)
+    vs = VectorStore(create_embedder())
+    audn = AUDNClassifier(vs)
+
+    with db.session() as conn:
+        purged_id = audn.execute_purge(fact_id, conn, reason=reason)
+
+    console.print("→ [bold]mnemo purge[/bold] [red]redacted[/red]")
+    console.print(f"  [dim]fact id[/dim]  {purged_id}")
+    console.print(f"  [dim]reason[/dim]   {reason}")
+    db.close()
+
+
+# ---------------------------------------------------------------------------
 # doctor
 # ---------------------------------------------------------------------------
 @app.command()
@@ -446,10 +519,22 @@ def doctor(
     db_path: str = typer.Option("", "--db", help="Database path."),
 ) -> None:
     """Diagnose database health, FTS5 index integrity, and graph statistics."""
+    from pathlib import Path
+
     from mnemo.storage.connection import Database, default_db_path
+    from mnemo.storage.vector_store import (
+        VectorStore,
+        create_embedder,
+        sync_embedding_metadata,
+    )
 
     target = db_path if db_path else str(default_db_path())
     db = Database(db_path=target)
+    vs = VectorStore(create_embedder())
+
+    with db.session() as conn:
+        sync_embedding_metadata(conn, vs.model_name, vs.dimension)
+
     health = db.check_integrity()
 
     status_color = "green" if health["integrity_ok"] else "red"
@@ -464,12 +549,34 @@ def doctor(
         f"  [dim]sqlite integrity[/dim][{status_color}] {'ok' if health['integrity_ok'] else 'corrupted'}[/{status_color}]"
     )
     console.print(f"  [dim]journal mode[/dim]    {health['journal_mode']}")
+
+    wal_path = Path(str(target) + "-wal")
+    if wal_path.exists():
+        wal_size_kb = wal_path.stat().st_size / 1024
+        console.print(f"  [dim]wal size[/dim]        {wal_size_kb:.1f} KiB")
+
     console.print(
         f"  [dim]fts5 sync[/dim]       [{fts_color}] {'synchronized' if health['fts_in_sync'] else 'repaired'}[/{fts_color}]"
     )
 
+    orphan_links = health.get("orphan_links", 0)
+    orphan_color = "green" if orphan_links == 0 else "yellow"
+    console.print(f"  [dim]orphan links[/dim]    [{orphan_color}]{orphan_links}[/{orphan_color}]")
+
+    db_model = health.get("embedding_model")
+    curr_model = vs.model_name
+    if db_model and db_model != curr_model:
+        console.print(
+            f"  [dim]embedding model[/dim] [yellow]{db_model} (current: {curr_model}) - reindex recommended![/yellow]"
+        )
+    else:
+        console.print(
+            f"  [dim]embedding model[/dim] [green]{db_model or curr_model}[/green]"
+        )
+
     counts = health.get("table_counts", {})
     console.print(f"  [dim]active facts[/dim]    {counts.get('facts', 0)}")
+    console.print(f"  [dim]audit tombstones[/dim]{counts.get('audit_tombstones', 0)}")
     console.print(f"  [dim]entities[/dim]        {counts.get('entities', 0)}")
     console.print(f"  [dim]relations[/dim]       {counts.get('relations', 0)}")
     console.print(f"  [dim]cached files[/dim]    {counts.get('file_scan_cache', 0)}")

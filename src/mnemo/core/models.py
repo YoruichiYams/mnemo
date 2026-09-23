@@ -69,13 +69,25 @@ class MemoryTier(StrEnum):
         return cls.ARCHIVED
 
 
+class SourceType(StrEnum):
+    """Origin / provenance category of a memory fact."""
+
+    AGENT = "agent"
+    HUMAN_DEVELOPER = "human_developer"
+    GIT_COMMIT = "git_commit"
+    DOCUMENTATION = "documentation"
+    TOOL_OUTPUT = "tool_output"
+
+
 class AUDNOperation(StrEnum):
-    """AUDN pipeline operations (Add / Update / Delete / Noop)."""
+    """AUDN pipeline operations (Add / Update / Delete / Noop / Correct / Purge)."""
 
     ADD = "add"
     UPDATE = "update"
     DELETE = "delete"
     NOOP = "noop"
+    CORRECT = "correct"
+    PURGE = "purge"
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +108,22 @@ class TemporalWindow(BaseModel):
     ingest_end: float | None = Field(default=None)
     valid_start: float = Field(default_factory=_epoch_now)
     valid_end: float | None = Field(default=None)
+
+    @property
+    def valid_from(self) -> float:
+        return self.valid_start
+
+    @property
+    def valid_to(self) -> float | None:
+        return self.valid_end
+
+    @property
+    def system_created_at(self) -> float:
+        return self.ingest_start
+
+    @property
+    def system_expired_at(self) -> float | None:
+        return self.ingest_end
 
     @property
     def is_active(self) -> bool:
@@ -184,7 +212,7 @@ class Fact(BaseModel):
     """Atomic unit of bitemporal memory.
 
     Fields mirror the ``facts`` SQL table.
-    ``salience`` decays over time via the Ebbinghaus formula in ``decay.py``.
+    ``salience`` decays over activity ticks via the Ebbinghaus formula in ``decay.py``.
     """
 
     id: str = Field(default_factory=_new_id)
@@ -194,6 +222,8 @@ class Fact(BaseModel):
     access_count: int = Field(default=0, ge=0)
     tier: MemoryTier = Field(default=MemoryTier.WORKING)
     last_accessed_at: float = Field(default_factory=_epoch_now)
+    last_accessed_tick: int = Field(default=0, ge=0)
+    reinforcement_count: int = Field(default=0, ge=0)
     # Bitemporal coordinates stored inline (also in TemporalWindow for convenience)
     valid_start: float = Field(default_factory=_epoch_now)
     valid_end: float | None = Field(default=None)
@@ -201,6 +231,28 @@ class Fact(BaseModel):
     ingest_end: float | None = Field(default=None)
     embedding: list[float] | None = Field(default=None, exclude=True)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    is_stale: bool = Field(default=False)
+    # Provenance and code search tokens
+    source_type: str = Field(default=SourceType.AGENT.value)
+    source_ref: str | None = Field(default=None)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    search_tokens: str = Field(default="")
+
+    @property
+    def valid_from(self) -> float:
+        return self.valid_start
+
+    @property
+    def valid_to(self) -> float | None:
+        return self.valid_end
+
+    @property
+    def system_created_at(self) -> float:
+        return self.ingest_start
+
+    @property
+    def system_expired_at(self) -> float | None:
+        return self.ingest_end
 
     @property
     def is_active(self) -> bool:
@@ -223,12 +275,24 @@ class Fact(BaseModel):
         """Mark this system version as superseded."""
         self.ingest_end = at if at is not None else _epoch_now()
 
-    def reinforce(self, boost: float = 0.10) -> None:
-        """Bump access statistics and salience on retrieval."""
+    def reinforce(self, boost: float = 0.10, tick: int | None = None) -> None:
+        """Bump access statistics and salience on retrieval / explicit reinforcement."""
         self.access_count += 1
+        self.reinforcement_count += 1
         self.last_accessed_at = _epoch_now()
+        if tick is not None:
+            self.last_accessed_tick = tick
         self.salience = min(1.0, self.salience + boost)
         self.tier = MemoryTier.from_salience(self.salience)
+
+
+class FactEntityLink(BaseModel):
+    """Association between a memory fact and an AST entity with node version hash."""
+
+    fact_id: str
+    entity_id: str
+    entity_hash_at_link: str
+    created_at: str
 
 
 # ---------------------------------------------------------------------------

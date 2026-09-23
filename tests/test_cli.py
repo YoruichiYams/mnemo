@@ -193,8 +193,11 @@ class TestCLICommands:
         assert "sqlite integrity" in res.stdout
         assert "schema version" in res.stdout
 
-    def test_cli_scan(self, cli_runner: CliRunner, tmp_path: Path) -> None:
+    def test_cli_scan(
+        self, cli_runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """'mnemo scan' executes AST scan and outputs summary metrics."""
+        monkeypatch.chdir(tmp_path)
         db_path = tmp_path / "scan.db"
         cli_runner.invoke(app, ["init", "--db", str(db_path)])
 

@@ -64,7 +64,7 @@ class TestMCPToolsAndResources:
         unique_token = f"inval_{uuid.uuid4().hex[:8]}"
         fact_text = f"Fact to reinforce and invalidate {unique_token}"
 
-        rem_res = mnemo_remember(fact_text, category="temp")
+        rem_res = mnemo_remember(fact_text, category="temp", force_op="add")
         assert "[ADD]" in rem_res
 
         # Search to get id
